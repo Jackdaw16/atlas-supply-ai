@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: atlas-supply-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-atlas_supply}
+      POSTGRES_USER: ${POSTGRES_USER:-atlas_supply}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-atlas_supply_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - atlas_supply_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-atlas_supply} -d ${POSTGRES_DB:-atlas_supply}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  atlas_supply_postgres_data:

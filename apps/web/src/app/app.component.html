@@ -1,0 +1,56 @@
+<div class="min-h-screen bg-slate-100 text-slate-900">
+  <mat-toolbar class="border-b border-slate-200 bg-white! px-6!">
+    <div class="mx-auto flex w-full max-w-5xl items-center gap-3">
+      <div class="flex size-9 items-center justify-center rounded-lg bg-slate-900 text-white">
+        <mat-icon>inventory_2</mat-icon>
+      </div>
+      <div>
+        <div class="text-base font-semibold leading-tight">Atlas Supply AI</div>
+        <div class="text-xs font-normal text-slate-500">Enterprise supply-chain assistant</div>
+      </div>
+    </div>
+  </mat-toolbar>
+
+  <main class="mx-auto flex min-h-[calc(100vh-64px)] max-w-5xl flex-col p-4 md:p-6">
+    <mat-card appearance="outlined" class="flex min-h-[70vh] flex-1 overflow-hidden rounded-2xl! border-slate-200!">
+      <div class="flex flex-1 flex-col">
+        <section class="flex-1 space-y-4 overflow-y-auto p-4 md:p-6">
+          @for (message of messages; track $index) {
+            <div class="flex" [class.justify-end]="message.role === 'user'">
+              <div
+                class="max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-6"
+                [class.bg-slate-900]="message.role === 'user'"
+                [class.text-white]="message.role === 'user'"
+                [class.bg-slate-100]="message.role === 'assistant'"
+                [class.text-slate-800]="message.role === 'assistant'">
+                {{ message.content }}
+              </div>
+            </div>
+          }
+        </section>
+
+        <form class="border-t border-slate-200 bg-white p-4" (ngSubmit)="send()">
+          <div class="flex items-end gap-3">
+            <mat-form-field appearance="outline" class="w-full">
+              <mat-label>Ask Atlas Supply</mat-label>
+              <textarea
+                matInput
+                rows="2"
+                name="message"
+                [(ngModel)]="draft"
+                placeholder="Which supplier orders are currently delayed?">
+              </textarea>
+            </mat-form-field>
+
+            <button mat-fab type="submit" aria-label="Send message" [disabled]="!draft.trim()">
+              <mat-icon>send</mat-icon>
+            </button>
+          </div>
+          <p class="mt-1 text-xs text-slate-400">
+            UI seed only — API, agent, RAG and MCP integration are intentionally pending.
+          </p>
+        </form>
+      </div>
+    </mat-card>
+  </main>
+</div>

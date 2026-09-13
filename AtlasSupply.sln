@@ -1,0 +1,42 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AtlasSupply.Domain", "libs\AtlasSupply.Domain\AtlasSupply.Domain.csproj", "{E3B4F3C0-3127-4E5A-BE56-2F6E7C96A401}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AtlasSupply.Application", "libs\AtlasSupply.Application\AtlasSupply.Application.csproj", "{0C47BBD1-7968-4CC9-A0F4-60C672DD1427}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AtlasSupply.Infrastructure", "libs\AtlasSupply.Infrastructure\AtlasSupply.Infrastructure.csproj", "{8D28D74B-BCCB-4B85-98F2-0FD4AD85BD79}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AtlasSupply.Api", "apps\api\AtlasSupply.Api\AtlasSupply.Api.csproj", "{AF8E88AE-1F0A-4544-9D59-88D65E647B55}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AtlasSupply.Mcp", "apps\mcp\AtlasSupply.Mcp\AtlasSupply.Mcp.csproj", "{D2354D65-9C9B-4C90-A4BB-9177812700FC}"
+EndProject
+Global
+    GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        Debug|Any CPU = Debug|Any CPU
+        Release|Any CPU = Release|Any CPU
+    EndGlobalSection
+    GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        {E3B4F3C0-3127-4E5A-BE56-2F6E7C96A401}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {E3B4F3C0-3127-4E5A-BE56-2F6E7C96A401}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {E3B4F3C0-3127-4E5A-BE56-2F6E7C96A401}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {E3B4F3C0-3127-4E5A-BE56-2F6E7C96A401}.Release|Any CPU.Build.0 = Release|Any CPU
+        {0C47BBD1-7968-4CC9-A0F4-60C672DD1427}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {0C47BBD1-7968-4CC9-A0F4-60C672DD1427}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {0C47BBD1-7968-4CC9-A0F4-60C672DD1427}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {0C47BBD1-7968-4CC9-A0F4-60C672DD1427}.Release|Any CPU.Build.0 = Release|Any CPU
+        {8D28D74B-BCCB-4B85-98F2-0FD4AD85BD79}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {8D28D74B-BCCB-4B85-98F2-0FD4AD85BD79}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {8D28D74B-BCCB-4B85-98F2-0FD4AD85BD79}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {8D28D74B-BCCB-4B85-98F2-0FD4AD85BD79}.Release|Any CPU.Build.0 = Release|Any CPU
+        {AF8E88AE-1F0A-4544-9D59-88D65E647B55}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {AF8E88AE-1F0A-4544-9D59-88D65E647B55}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {AF8E88AE-1F0A-4544-9D59-88D65E647B55}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {AF8E88AE-1F0A-4544-9D59-88D65E647B55}.Release|Any CPU.Build.0 = Release|Any CPU
+        {D2354D65-9C9B-4C90-A4BB-9177812700FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        {D2354D65-9C9B-4C90-A4BB-9177812700FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        {D2354D65-9C9B-4C90-A4BB-9177812700FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        {D2354D65-9C9B-4C90-A4BB-9177812700FC}.Release|Any CPU.Build.0 = Release|Any CPU
+    EndGlobalSection
+EndGlobal
