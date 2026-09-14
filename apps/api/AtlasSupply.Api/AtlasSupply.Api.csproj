@@ -7,6 +7,9 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.4" />
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerUi" Version="10.0.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\..\libs\AtlasSupply.Application\AtlasSupply.Application.csproj" />
