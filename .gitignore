@@ -31,3 +31,5 @@ crash.log
 Thumbs.db
 
 .atl/
+
+apps/api/AtlasSupply.Api/appsettings.Development.json

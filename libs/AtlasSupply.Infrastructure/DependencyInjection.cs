@@ -1,4 +1,6 @@
+using AtlasSupply.Application;
 using AtlasSupply.Infrastructure.Persistence;
+using AtlasSupply.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +21,10 @@ public static class DependencyInjection
         services.AddDbContext<AtlasSupplyDbContext>(options =>
             options.UseNpgsql(connectionString, npgsqlOptions =>
                 npgsqlOptions.MigrationsAssembly(typeof(AssemblyMarker).Assembly.FullName)));
+
+        services.AddScoped<ISupplierRepository, SupplierRepository>();
+        services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
+        services.AddScoped<IIncidentRepository, IncidentRepository>();
 
         return services;
     }
