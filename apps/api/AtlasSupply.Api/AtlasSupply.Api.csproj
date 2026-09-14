@@ -3,6 +3,12 @@
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.4">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\..\libs\AtlasSupply.Application\AtlasSupply.Application.csproj" />
     <ProjectReference Include="..\..\..\libs\AtlasSupply.Infrastructure\AtlasSupply.Infrastructure.csproj" />
   </ItemGroup>
