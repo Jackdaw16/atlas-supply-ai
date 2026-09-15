@@ -1,4 +1,5 @@
 using AtlasSupply.Domain;
+using AtlasSupply.Infrastructure.Persistence.Knowledge;
 using Microsoft.EntityFrameworkCore;
 
 namespace AtlasSupply.Infrastructure.Persistence;
@@ -13,8 +14,13 @@ public sealed class AtlasSupplyDbContext(DbContextOptions<AtlasSupplyDbContext> 
 
     public DbSet<Incident> Incidents => Set<Incident>();
 
+    internal DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
+
+    internal DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.HasPostgresExtension("vector");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(AssemblyMarker).Assembly);
     }
 }
