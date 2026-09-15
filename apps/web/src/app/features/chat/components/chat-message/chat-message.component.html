@@ -1,0 +1,41 @@
+<article class="flex" [class.justify-end]="message().role === 'user'">
+  <div
+    class="max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm md:max-w-[76%]"
+    [class.bg-slate-900]="message().role === 'user'"
+    [class.text-white]="message().role === 'user'"
+    [class.border]="isAssistant()"
+    [class.border-slate-200]="isAssistant()"
+    [class.bg-white]="isAssistant()"
+    [class.text-slate-800]="isAssistant()">
+    <p class="m-0 whitespace-pre-wrap">{{ message().content }}</p>
+
+    @if (message().toolsUsed?.length) {
+      <div class="mt-3 border-t border-slate-100 pt-3">
+        <p class="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Tools used</p>
+        <mat-chip-set aria-label="Tools used to prepare this answer">
+          @for (tool of message().toolsUsed; track tool) {
+            <mat-chip class="text-xs!">{{ tool }}</mat-chip>
+          }
+        </mat-chip-set>
+      </div>
+    }
+
+    @if (message().ragSources?.length) {
+      <mat-expansion-panel class="mt-3 rounded-lg! border border-slate-200! shadow-none!">
+        <mat-expansion-panel-header>
+          <mat-panel-title class="text-sm! font-medium!">Grounding sources</mat-panel-title>
+          <mat-panel-description>{{ message().ragSources?.length }} referenced</mat-panel-description>
+        </mat-expansion-panel-header>
+        <ul class="m-0 space-y-2 p-0" aria-label="Referenced knowledge sources">
+          @for (source of message().ragSources; track source.sourcePath + source.heading) {
+            <li class="list-none rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
+              <span class="font-semibold text-slate-800">{{ documentName(source.sourcePath) }}</span>
+              <span class="mx-1 text-slate-400">/</span>
+              <span>{{ source.heading || 'No heading supplied' }}</span>
+            </li>
+          }
+        </ul>
+      </mat-expansion-panel>
+    }
+  </div>
+</article>

@@ -1,7 +1,4 @@
 :host {
   display: block;
-}
-
-mat-form-field {
-  --mat-form-field-container-vertical-padding: 12px;
+  min-height: 100%;
 }
