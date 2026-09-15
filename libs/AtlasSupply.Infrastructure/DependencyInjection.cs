@@ -1,4 +1,5 @@
 using AtlasSupply.Application;
+using AtlasSupply.Infrastructure.Agents;
 using AtlasSupply.Infrastructure.Knowledge;
 using AtlasSupply.Infrastructure.Persistence;
 using AtlasSupply.Infrastructure.Persistence.Repositories;
@@ -32,6 +33,13 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeChunkSearch, KnowledgeChunkSearch>();
         services.AddScoped<IKnowledgeRetrievalService, SemanticKnowledgeRetrievalService>();
         services.AddScoped<IKnowledgeIngestionService, KnowledgeIngestionService>();
+        services.AddScoped<IAgentLanguageModel, OpenAIAgentLanguageModel>();
+        services.AddScoped<IAgentToolProvider, McpAgentToolProvider>();
+        services.AddScoped<AgentService>(serviceProvider => new AgentService(
+            serviceProvider.GetRequiredService<IAgentLanguageModel>(),
+            serviceProvider.GetRequiredService<IAgentToolProvider>(),
+            serviceProvider.GetRequiredService<IKnowledgeRetrievalService>(),
+            new AgentServiceOptions(ParseMaximumToolRounds(configuration))));
         services.Configure<KnowledgeIngestionOptions>(options =>
             options.SourceDirectory = configuration["Knowledge:SourceDirectory"] ?? "docs/knowledge");
 
@@ -50,5 +58,22 @@ public static class DependencyInjection
 
         throw new InvalidOperationException(
             "PostgreSQL connection string is missing. Configure ConnectionStrings:PostgreSQL or POSTGRESQL_CONNECTION_STRING.");
+    }
+
+    private static int ParseMaximumToolRounds(IConfiguration configuration)
+    {
+        var configuredValue = configuration["Agent:MaximumToolRounds"];
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return 4;
+        }
+
+        if (!int.TryParse(configuredValue, out var maximumToolRounds) || maximumToolRounds is < 1 or > 8)
+        {
+            throw new InvalidOperationException(
+                "Agent:MaximumToolRounds must be an integer between 1 and 8.");
+        }
+
+        return maximumToolRounds;
     }
 }

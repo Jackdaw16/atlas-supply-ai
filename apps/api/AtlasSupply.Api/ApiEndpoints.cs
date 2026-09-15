@@ -77,6 +77,22 @@ public static class ApiEndpoints
             .Produces<IReadOnlyList<DelayedOrderResult>>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        app.MapPost("/api/chat", async (
+            AgentChatRequest request,
+            AgentService agentService,
+            CancellationToken cancellationToken) =>
+        {
+            var result = await agentService.ChatAsync(request, cancellationToken);
+            return Results.Ok(result);
+        })
+            .WithName("Chat")
+            .WithTags("Chat")
+            .Accepts<AgentChatRequest>("application/json")
+            .Produces<AgentChatResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
         app.MapPost("/api/incidents", async (
             CreateIncidentRequest? request,
             CreateIncident createIncident,
