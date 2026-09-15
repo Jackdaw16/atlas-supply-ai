@@ -57,6 +57,33 @@ docker compose up -d postgres
 
 The seed uses the `pgvector/pgvector` PostgreSQL image so the same database can later hold relational data and embeddings.
 
-## Current scope
+## Knowledge ingestion and retrieval
 
-The seed deliberately does **not** include business entities, EF Core migrations, RAG ingestion, MCP tools, authentication, the agent, or the Angular application yet. Those will be added incrementally after the domain model and first use case are defined.
+The initial RAG foundation ingests only the four Markdown sources in `docs/knowledge/`. It stores document and chunk metadata, content hashes, deterministic chunk identities, and OpenAI embeddings in PostgreSQL with pgvector.
+
+The chunker normalizes CRLF/LF newlines, preserves Markdown headings as chunk context, keeps paragraphs together where possible, and limits persisted chunk content to 1,200 characters. Retrieval uses L2 distance, so a smaller `distance` value is a closer match.
+
+### Local development
+
+Set an API key in the shell; never add it to configuration files:
+
+```powershell
+$env:OPENAI_API_KEY = "your-key"
+$env:ASPNETCORE_ENVIRONMENT = "Development"
+docker compose up -d postgres
+dotnet ef database update --project libs/AtlasSupply.Infrastructure --startup-project apps/api/AtlasSupply.Api
+dotnet run --project apps/api/AtlasSupply.Api
+```
+
+`OpenAI:EmbeddingModel` defaults to `text-embedding-3-small`. Set `Knowledge__SourceDirectory` only to a repository-relative Markdown source directory; it defaults to `docs/knowledge`.
+
+The existing API connection configuration uses a different database user from the Docker Compose default. Before the database commands, set `POSTGRESQL_CONNECTION_STRING` in the shell to a connection string that matches the Docker environment you started; do not change checked-in configuration or add credentials to it.
+
+With the URL printed by `dotnet run`, ingest the configured sources and verify retrieval:
+
+```powershell
+Invoke-RestMethod -Method Post http://localhost:<port>/api/development/knowledge/ingest
+Invoke-RestMethod "http://localhost:<port>/api/development/knowledge/search?query=purchase%20order%20statuses&topK=3"
+```
+
+The endpoints exist only in the Development environment. Ingestion skips unchanged normalized document content, updates changed sources, and removes database records for Markdown sources no longer present in the configured directory. Knowledge documents contain stable policy; use existing application queries or MCP for live supplier, purchase order, and incident data.

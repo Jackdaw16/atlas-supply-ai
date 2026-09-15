@@ -1,4 +1,5 @@
 using AtlasSupply.Application;
+using AtlasSupply.Infrastructure.Knowledge;
 using AtlasSupply.Infrastructure.Persistence;
 using AtlasSupply.Infrastructure.Persistence.Repositories;
 using Microsoft.EntityFrameworkCore;
@@ -20,11 +21,19 @@ public static class DependencyInjection
 
         services.AddDbContext<AtlasSupplyDbContext>(options =>
             options.UseNpgsql(connectionString, npgsqlOptions =>
-                npgsqlOptions.MigrationsAssembly(typeof(AssemblyMarker).Assembly.FullName)));
+                npgsqlOptions.MigrationsAssembly(typeof(AssemblyMarker).Assembly.FullName)
+                    .UseVector()));
 
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
+        services.AddSingleton<IMarkdownKnowledgeChunker, MarkdownKnowledgeChunker>();
+        services.AddSingleton<IEmbeddingService, OpenAIEmbeddingService>();
+        services.AddScoped<IKnowledgeChunkSearch, KnowledgeChunkSearch>();
+        services.AddScoped<IKnowledgeRetrievalService, SemanticKnowledgeRetrievalService>();
+        services.AddScoped<IKnowledgeIngestionService, KnowledgeIngestionService>();
+        services.Configure<KnowledgeIngestionOptions>(options =>
+            options.SourceDirectory = configuration["Knowledge:SourceDirectory"] ?? "docs/knowledge");
 
         return services;
     }
