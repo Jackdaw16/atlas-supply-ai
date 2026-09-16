@@ -1,5 +1,81 @@
 :host {
   display: flex;
   min-height: 0;
+  min-width: 0;
   flex: 1;
+}
+
+.chat-scroll {
+  scrollbar-color: rgb(71 85 105) transparent;
+  scrollbar-width: thin;
+}
+
+textarea {
+  resize: none;
+}
+
+.composer-field {
+  margin: 0;
+  --mdc-outlined-text-field-container-shape: 0.75rem;
+}
+
+.composer-field ::ng-deep .mat-mdc-text-field-wrapper {
+  background: #0c1625;
+}
+
+.composer-field ::ng-deep .mdc-notched-outline__leading,
+.composer-field ::ng-deep .mdc-notched-outline__notch,
+.composer-field ::ng-deep .mdc-notched-outline__trailing {
+  border-color: rgb(71 85 105 / 0.7) !important;
+}
+
+.composer-field ::ng-deep .mdc-text-field--focused .mdc-notched-outline__leading,
+.composer-field ::ng-deep .mdc-text-field--focused .mdc-notched-outline__notch,
+.composer-field ::ng-deep .mdc-text-field--focused .mdc-notched-outline__trailing {
+  border-color: rgb(125 211 252 / 0.75) !important;
+  border-width: 1px !important;
+}
+
+.composer-field ::ng-deep .mdc-floating-label,
+.composer-field ::ng-deep textarea {
+  color: rgb(203 213 225) !important;
+}
+
+.chat-send {
+  align-items: center;
+  align-self: flex-end;
+  justify-content: center;
+}
+
+.chat-send ::ng-deep .mdc-button__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  line-height: 1;
+}
+
+.empty-state-icon {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 2.25rem;
+  line-height: 1;
+}
+
+.alert-icon {
+  display: block;
+  flex: 0 0 1rem;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0.125rem;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.send-icon {
+  display: block;
+  width: 1.125rem;
+  height: 1.125rem;
+  font-size: 1.125rem;
+  line-height: 1;
 }
