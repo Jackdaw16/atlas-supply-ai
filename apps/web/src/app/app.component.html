@@ -1,18 +1,18 @@
-<div class="flex min-h-screen flex-col bg-[#f5f6f7] text-slate-900">
-  <mat-toolbar class="border-b border-slate-800 bg-slate-950! px-4! text-white md:px-6!">
-    <div class="mx-auto flex w-full max-w-6xl items-center gap-3">
-      <div class="flex size-9 items-center justify-center rounded-lg bg-amber-400 text-slate-950">
-        <mat-icon>inventory_2</mat-icon>
+<div class="flex h-dvh flex-col overflow-hidden bg-[#09111d] text-slate-100">
+  <mat-toolbar class="shrink-0 bg-[#0b1422]! px-4! text-white md:px-6!">
+    <div class="mx-auto flex w-full max-w-7xl items-center gap-3">
+      <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-400 text-slate-950 shadow-[0_0_0_1px_rgba(255,255,255,0.08)]">
+        <mat-icon class="brand-icon">inventory_2</mat-icon>
       </div>
-      <div>
-        <div class="text-base font-semibold leading-tight tracking-tight">Atlas Supply</div>
-        <div class="text-xs font-normal text-slate-300">Operations intelligence</div>
+      <div class="flex flex-col justify-center">
+        <div class="text-base font-semibold leading-tight tracking-wide text-white">Atlas Supply</div>
+        <div class="mt-0.5 text-xs font-normal leading-none text-slate-300">Operations intelligence</div>
       </div>
     </div>
   </mat-toolbar>
 
-  <main class="mx-auto flex min-h-0 w-full max-w-6xl flex-1 p-3 md:p-6">
-    <section class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_18px_50px_-34px_rgba(15,23,42,0.55)]" aria-label="Atlas Supply assistant">
+  <main class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 overflow-hidden px-4 py-3 md:p-6">
+    <section class="flex min-h-0 flex-1 overflow-hidden rounded-xl bg-[#101b2b] shadow-[0_24px_60px_-34px_rgba(0,0,0,0.9)] md:rounded-2xl" aria-label="Atlas Supply assistant">
       <app-chat />
     </section>
   </main>

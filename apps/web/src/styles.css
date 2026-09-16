@@ -1,13 +1,52 @@
 @import "tailwindcss";
 
+:root {
+  --atlas-font-family: "IBM Plex Sans", sans-serif;
+  --mat-sys-body-large-font: var(--atlas-font-family);
+  --mat-sys-body-medium-font: var(--atlas-font-family);
+  --mat-sys-body-small-font: var(--atlas-font-family);
+  --mat-sys-label-large-font: var(--atlas-font-family);
+  --mat-sys-label-medium-font: var(--atlas-font-family);
+  --mat-sys-label-small-font: var(--atlas-font-family);
+  --mat-sys-title-large-font: var(--atlas-font-family);
+  --mat-sys-title-medium-font: var(--atlas-font-family);
+  --mat-sys-title-small-font: var(--atlas-font-family);
+  --mat-sys-headline-large-font: var(--atlas-font-family);
+  --mat-sys-headline-medium-font: var(--atlas-font-family);
+  --mat-sys-headline-small-font: var(--atlas-font-family);
+}
+
 html,
 body {
   height: 100%;
 }
 
+html {
+  color-scheme: dark;
+  background: #09111d;
+}
+
 body {
   margin: 0;
-  font-family: "Aptos", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: var(--atlas-font-family);
+  background: #09111d;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+mat-icon.mat-icon {
+  font-family: "Material Symbols Rounded";
+  font-feature-settings: "liga";
+}
+
+:focus-visible {
+  outline: 2px solid rgb(251 191 36 / 0.8);
+  outline-offset: 2px;
 }
 
 * {

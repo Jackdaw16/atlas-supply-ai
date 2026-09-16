@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { TextFieldModule } from '@angular/cdk/text-field';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatFormFieldModule } from '@angular/material/form-field';
@@ -21,6 +22,7 @@ import { ChatService } from '../../services/chat.service';
     MatIconModule,
     MatInputModule,
     MatProgressSpinnerModule,
+    TextFieldModule,
     ChatMessageComponent
   ],
   templateUrl: './chat.component.html',

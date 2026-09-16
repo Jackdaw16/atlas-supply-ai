@@ -1,0 +1,15 @@
+:host {
+  display: block;
+}
+
+.assistant-message {
+  max-width: min(92%, 48rem);
+  padding: 1rem 1.25rem;
+  line-height: 1.75;
+}
+
+@media (min-width: 48rem) {
+  .assistant-message {
+    max-width: min(72%, 46rem);
+  }
+}

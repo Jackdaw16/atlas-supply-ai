@@ -7,7 +7,8 @@ import { ChatMessage } from '../../models/chat-message.models';
   selector: 'app-chat-message',
   standalone: true,
   imports: [MatChipsModule, MatExpansionModule],
-  templateUrl: './chat-message.component.html'
+  templateUrl: './chat-message.component.html',
+  styleUrl: './chat-message.component.scss'
 })
 export class ChatMessageComponent {
   readonly message = input.required<ChatMessage>();
