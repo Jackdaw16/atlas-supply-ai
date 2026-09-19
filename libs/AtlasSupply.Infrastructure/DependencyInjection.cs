@@ -3,6 +3,7 @@ using AtlasSupply.Infrastructure.Agents;
 using AtlasSupply.Infrastructure.Knowledge;
 using AtlasSupply.Infrastructure.Persistence;
 using AtlasSupply.Infrastructure.Persistence.Repositories;
+using AtlasSupply.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -28,6 +29,10 @@ public static class DependencyInjection
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
+        services.AddScoped<IUserCredentialStore, AuthenticationUserRepository>();
+        services.AddSingleton<IPasswordVerifier, UserPasswordHasher>();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<IMarkdownKnowledgeChunker, MarkdownKnowledgeChunker>();
         services.AddSingleton<IEmbeddingService, OpenAIEmbeddingService>();
         services.AddScoped<IKnowledgeChunkSearch, KnowledgeChunkSearch>();

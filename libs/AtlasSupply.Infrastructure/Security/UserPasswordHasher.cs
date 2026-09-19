@@ -1,9 +1,10 @@
+using AtlasSupply.Application;
 using AtlasSupply.Domain;
 using Microsoft.AspNetCore.Identity;
 
 namespace AtlasSupply.Infrastructure.Security;
 
-internal sealed class UserPasswordHasher : IPasswordHasher<User>
+internal sealed class UserPasswordHasher : IPasswordHasher<User>, IPasswordVerifier
 {
     private readonly PasswordHasher<User> _passwordHasher = new();
 
@@ -22,5 +23,10 @@ internal sealed class UserPasswordHasher : IPasswordHasher<User>
         ArgumentException.ThrowIfNullOrWhiteSpace(providedPassword);
 
         return _passwordHasher.VerifyHashedPassword(user, hashedPassword, providedPassword);
+    }
+
+    public bool Verify(User user, string password)
+    {
+        return VerifyHashedPassword(user, user.PasswordHash, password) is not PasswordVerificationResult.Failed;
     }
 }

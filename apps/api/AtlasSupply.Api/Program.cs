@@ -12,6 +12,7 @@ builder.Services.AddScoped<ListSuppliers>();
 builder.Services.AddScoped<GetSupplierById>();
 builder.Services.AddScoped<GetDelayedOrders>();
 builder.Services.AddScoped<CreateIncident>();
+builder.Services.AddScoped<Login>();
 
 var app = builder.Build();
 

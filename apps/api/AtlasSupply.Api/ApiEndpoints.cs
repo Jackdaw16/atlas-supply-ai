@@ -23,6 +23,44 @@ public static class ApiEndpoints
             service = "AtlasSupply.Api"
         }));
 
+        app.MapPost("/api/auth/login", async (
+            LoginRequest? request,
+            Login login,
+            CancellationToken cancellationToken) =>
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["request"] = ["Username and password are required."]
+                });
+            }
+
+            try
+            {
+                var result = await login.ExecuteAsync(
+                    new LoginInput(request.Username, request.Password),
+                    cancellationToken);
+
+                return Results.Ok(new LoginResponse(
+                    result.AccessToken,
+                    result.ExpiresAtUtc,
+                    result.Username,
+                    result.Scopes));
+            }
+            catch (InvalidCredentialsException)
+            {
+                return Results.Unauthorized();
+            }
+        })
+            .WithName("Login")
+            .WithTags("Authentication")
+            .Accepts<LoginRequest>("application/json")
+            .Produces<LoginResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         app.MapGet("/api/suppliers", async (
             ListSuppliers listSuppliers,
             CancellationToken cancellationToken) =>
