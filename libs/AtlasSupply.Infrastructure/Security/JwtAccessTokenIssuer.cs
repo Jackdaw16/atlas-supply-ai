@@ -25,7 +25,7 @@ public sealed class JwtAccessTokenIssuer(IConfiguration configuration, TimeProvi
             throw new ArgumentException("Token username is required.", nameof(request));
         }
 
-        var settings = ResolveSettings();
+        var settings = JwtConfiguration.ResolveAccessTokenSettings(configuration);
         var issuedAtUtc = timeProvider.GetUtcNow();
         var expiresAtUtc = issuedAtUtc.AddMinutes(settings.AccessTokenMinutes);
         var signingKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey));
@@ -54,41 +54,4 @@ public sealed class JwtAccessTokenIssuer(IConfiguration configuration, TimeProvi
             expiresAtUtc));
     }
 
-    private JwtAccessTokenSettings ResolveSettings()
-    {
-        var issuer = RequireSetting("Jwt:Issuer");
-        var audience = RequireSetting("Jwt:Audience");
-        var signingKey = RequireSetting("JWT_SIGNING_KEY");
-        var accessTokenMinutesValue = RequireSetting("Jwt:AccessTokenMinutes");
-
-        if (!int.TryParse(accessTokenMinutesValue, out var accessTokenMinutes) || accessTokenMinutes < 1)
-        {
-            throw new InvalidOperationException("Jwt:AccessTokenMinutes must be a positive integer.");
-        }
-
-        if (Encoding.UTF8.GetByteCount(signingKey) < 32)
-        {
-            throw new InvalidOperationException("JWT_SIGNING_KEY must contain at least 32 UTF-8 bytes.");
-        }
-
-        return new JwtAccessTokenSettings(issuer, audience, signingKey, accessTokenMinutes);
-    }
-
-    private string RequireSetting(string key)
-    {
-        var value = configuration[key];
-
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            throw new InvalidOperationException($"{key} is required for JWT access token issuance.");
-        }
-
-        return value;
-    }
-
-    private sealed record JwtAccessTokenSettings(
-        string Issuer,
-        string Audience,
-        string SigningKey,
-        int AccessTokenMinutes);
 }

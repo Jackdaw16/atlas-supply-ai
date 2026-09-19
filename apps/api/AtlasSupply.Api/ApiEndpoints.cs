@@ -125,6 +125,7 @@ public static class ApiEndpoints
         })
             .WithName("Chat")
             .WithTags("Chat")
+            .RequireAuthorization()
             .Accepts<AgentChatRequest>("application/json")
             .Produces<AgentChatResult>(StatusCodes.Status200OK)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
