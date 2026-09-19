@@ -1,5 +1,6 @@
 using AtlasSupply.Domain;
 using AtlasSupply.Infrastructure.Persistence;
+using AtlasSupply.Infrastructure.Persistence.Seed;
 using AtlasSupply.Infrastructure.Security;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
@@ -10,6 +11,19 @@ namespace AtlasSupply.Security.Tests;
 
 public sealed class UserScopePersistenceTests
 {
+    [Theory]
+    [InlineData("55555555-5555-5555-5555-555555555501", "readonly", "readonly@atlas-supply.local")]
+    [InlineData("55555555-5555-5555-5555-555555555502", "operator", "operator@atlas-supply.local")]
+    public void SeededDemoUserPasswordHash_ValidatesTheDevelopmentPassword(string userId, string username, string email)
+    {
+        var user = new User(Guid.Parse(userId), username, email, AtlasSupplySeedData.DemoUserPasswordHash);
+        var passwordHasher = new UserPasswordHasher();
+
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            passwordHasher.VerifyHashedPassword(user, user.PasswordHash, "test-only-password"));
+    }
+
     [Fact]
     public void UserScopeAssignments_AreMappedWithTheUserAndPasswordHash()
     {
