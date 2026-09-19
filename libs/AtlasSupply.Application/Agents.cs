@@ -103,6 +103,7 @@ public sealed class AgentService(
         var discoveredTools = await toolSession.DiscoverToolsAsync(cancellationToken);
         var tools = CreateToolCatalog(discoveredTools, authorizationContext);
         var toolsByName = tools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
+        var systemInstructions = CreateSystemInstructions(authorizationContext);
         var messages = new List<AgentMessage> { new AgentUserMessage(message) };
         var toolsUsed = new List<string>();
         var ragSources = new List<KnowledgeSearchResult>();
@@ -110,7 +111,7 @@ public sealed class AgentService(
         for (var toolRounds = 0; ;)
         {
             var completion = await languageModel.CompleteAsync(
-                new AgentLanguageModelRequest(SystemInstructions, messages, tools),
+                new AgentLanguageModelRequest(systemInstructions, messages, tools),
                 cancellationToken);
 
             if (completion.ToolCalls.Count == 0)
@@ -271,6 +272,9 @@ public sealed class AgentService(
 
         return tools;
     }
+
+    private static string CreateSystemInstructions(AgentAuthorizationContext authorizationContext) =>
+        $"{SystemInstructions} {AgentToolCapabilityMap.CreateCapabilitySummary(authorizationContext)}";
 
     private static AgentToolExecutionResult CreateAuthorizationDeniedResult() =>
         new(JsonSerializer.Serialize(new { error = "Tool is not authorized." }), IsError: true);

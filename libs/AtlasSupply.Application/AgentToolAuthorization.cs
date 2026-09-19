@@ -94,4 +94,44 @@ public static class AgentToolCapabilityMap
         capability = null!;
         return false;
     }
+
+    public static string CreateCapabilitySummary(AgentAuthorizationContext authorizationContext)
+    {
+        ArgumentNullException.ThrowIfNull(authorizationContext);
+
+        var capabilities = new List<string>();
+        if (authorizationContext.HasCapability(AgentCapabilityScope.SuppliersList))
+        {
+            capabilities.Add("You can list suppliers.");
+        }
+
+        if (authorizationContext.HasCapability(AgentCapabilityScope.SuppliersRead))
+        {
+            capabilities.Add("You can read supplier details.");
+        }
+
+        if (authorizationContext.HasCapability(AgentCapabilityScope.OrdersDelayedRead))
+        {
+            capabilities.Add("You can read delayed orders.");
+        }
+
+        if (authorizationContext.HasCapability(AgentCapabilityScope.KnowledgeSearch))
+        {
+            capabilities.Add("You can search internal knowledge.");
+        }
+
+        if (authorizationContext.HasCapability(AgentCapabilityScope.IncidentsCreate))
+        {
+            capabilities.Add("You can create incidents.");
+        }
+        else
+        {
+            capabilities.Add("You cannot perform write operations such as creating incidents.");
+        }
+
+        capabilities.Add(
+            "When a requested operation is unavailable because of this session's permissions, say that you cannot perform it with the permissions available in this session. Do not claim that Atlas Supply or an integration lacks the operation.");
+
+        return string.Join(' ', capabilities);
+    }
 }

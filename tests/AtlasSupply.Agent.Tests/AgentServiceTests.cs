@@ -257,6 +257,15 @@ public sealed class AgentServiceTests
         Assert.Empty(session.Invocations);
         Assert.Empty(retrieval.Inputs);
         Assert.Empty(result.ToolsUsed);
+        Assert.Contains(
+            "cannot perform write operations such as creating incidents",
+            languageModel.Requests[0].SystemInstructions,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.Contains(
+            "permissions available in this session",
+            languageModel.Requests[0].SystemInstructions,
+            StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("incidents.create", languageModel.Requests[0].SystemInstructions, StringComparison.Ordinal);
         var toolResult = Assert.IsType<AgentToolMessage>(languageModel.Requests[1].Messages[^1]);
         Assert.True(toolResult.IsError);
         Assert.Contains("not authorized", toolResult.Content);
@@ -282,6 +291,7 @@ public sealed class AgentServiceTests
         Assert.Contains(
             languageModel.Requests[0].Tools,
             tool => tool.Name == AgentToolCapabilityMap.CreateIncidentToolName);
+        Assert.Contains("You can create incidents.", languageModel.Requests[0].SystemInstructions, StringComparison.Ordinal);
         Assert.Equal(AgentToolCapabilityMap.CreateIncidentToolName, session.Invocations.Single().ToolName);
     }
 
