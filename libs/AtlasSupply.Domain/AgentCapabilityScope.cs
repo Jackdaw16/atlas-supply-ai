@@ -32,10 +32,18 @@ public sealed record AgentCapabilityScope
 
     public static AgentCapabilityScope FromValue(string value)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(value);
+        return TryFromValue(value, out var scope)
+            ? scope!
+            : throw new ArgumentException("The agent capability scope is not defined.", nameof(value));
+    }
 
-        return DefinedScopes.SingleOrDefault(scope =>
-            string.Equals(scope.Value, value.Trim(), StringComparison.Ordinal))
-            ?? throw new ArgumentException("The agent capability scope is not defined.", nameof(value));
+    public static bool TryFromValue(string? value, out AgentCapabilityScope? scope)
+    {
+        scope = string.IsNullOrWhiteSpace(value)
+            ? null
+            : DefinedScopes.SingleOrDefault(candidate =>
+                string.Equals(candidate.Value, value.Trim(), StringComparison.Ordinal));
+
+        return scope is not null;
     }
 }

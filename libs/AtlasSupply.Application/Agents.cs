@@ -80,7 +80,6 @@ public sealed class AgentService(
 {
     private const int MaximumMessageLength = 4_000;
     private const int MaximumToolCallsPerCompletion = 8;
-    private const string SearchKnowledgeToolName = "search_knowledge";
 
     public const string SystemInstructions =
         "Use RAG for Atlas Supply policies and procedures. Use MCP for live transactional data and actions. Never invent suppliers, orders, incidents, or company policies. Use tools rather than assumptions when authoritative data exists.";
@@ -89,13 +88,15 @@ public sealed class AgentService(
 
     public async Task<AgentChatResult> ChatAsync(
         AgentChatRequest request,
+        AgentAuthorizationContext authorizationContext,
         CancellationToken cancellationToken)
     {
         var message = ValidateMessage(request);
+        ArgumentNullException.ThrowIfNull(authorizationContext);
 
         await using var toolSession = await toolProvider.OpenSessionAsync(cancellationToken);
         var discoveredTools = await toolSession.DiscoverToolsAsync(cancellationToken);
-        var tools = CreateToolCatalog(discoveredTools);
+        var tools = CreateToolCatalog(discoveredTools, authorizationContext);
         var toolsByName = tools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
         var messages = new List<AgentMessage> { new AgentUserMessage(message) };
         var toolsUsed = new List<string>();
@@ -128,14 +129,24 @@ public sealed class AgentService(
 
             foreach (var toolCall in completion.ToolCalls)
             {
-                if (string.IsNullOrWhiteSpace(toolCall.Name) || !toolsByName.TryGetValue(toolCall.Name, out _))
+                if (!AgentToolCapabilityMap.IsAuthorized(toolCall.Name, authorizationContext))
                 {
-                    throw new InvalidOperationException($"Agent requested unknown tool '{toolCall.Name}'.");
+                    messages.Add(new AgentToolMessage(
+                        toolCall.Id,
+                        toolCall.Name,
+                        CreateAuthorizationDeniedResult().Content,
+                        IsError: true));
+                    continue;
+                }
+
+                if (!toolsByName.ContainsKey(toolCall.Name))
+                {
+                    throw new InvalidOperationException($"Agent requested unavailable tool '{toolCall.Name}'.");
                 }
 
                 AgentToolExecutionResult result;
 
-                if (toolCall.Name == SearchKnowledgeToolName)
+                if (toolCall.Name == AgentToolCapabilityMap.SearchKnowledgeToolName)
                 {
                     result = await SearchKnowledgeAsync(toolCall, ragSources, cancellationToken);
                 }
@@ -187,19 +198,25 @@ public sealed class AgentService(
     }
 
     private static IReadOnlyList<AgentToolDefinition> CreateToolCatalog(
-        IReadOnlyList<AgentToolDefinition> discoveredTools)
+        IReadOnlyList<AgentToolDefinition> discoveredTools,
+        AgentAuthorizationContext authorizationContext)
     {
         ArgumentNullException.ThrowIfNull(discoveredTools);
+        ArgumentNullException.ThrowIfNull(authorizationContext);
 
         var tools = new List<AgentToolDefinition>(discoveredTools.Count + 1)
         {
             new(
-                SearchKnowledgeToolName,
+                AgentToolCapabilityMap.SearchKnowledgeToolName,
                 "Searches Atlas Supply policies and procedures and returns source metadata.",
                 CreateSearchKnowledgeSchema())
         };
 
-        tools.AddRange(discoveredTools);
+        tools = tools
+            .Where(tool => AgentToolCapabilityMap.IsAuthorized(tool.Name, authorizationContext))
+            .ToList();
+        tools.AddRange(discoveredTools.Where(tool =>
+            AgentToolCapabilityMap.IsAuthorized(tool.Name, authorizationContext)));
 
         var duplicates = tools
             .GroupBy(tool => tool.Name, StringComparer.Ordinal)
@@ -214,6 +231,9 @@ public sealed class AgentService(
 
         return tools;
     }
+
+    private static AgentToolExecutionResult CreateAuthorizationDeniedResult() =>
+        new(JsonSerializer.Serialize(new { error = "Tool is not authorized." }), IsError: true);
 
     private static JsonElement CreateSearchKnowledgeSchema()
     {

@@ -1,11 +1,22 @@
 using System.Text.Json;
 using AtlasSupply.Application;
+using AtlasSupply.Domain;
 using Xunit;
 
 namespace AtlasSupply.Agent.Tests;
 
 public sealed class AgentServiceTests
 {
+    private static readonly AgentAuthorizationContext ReadOnlyAuthorization = new(
+    [
+        AgentCapabilityScope.KnowledgeSearch,
+        AgentCapabilityScope.SuppliersList,
+        AgentCapabilityScope.SuppliersRead,
+        AgentCapabilityScope.OrdersDelayedRead
+    ]);
+
+    private static readonly AgentAuthorizationContext OperatorAuthorization = new(AgentCapabilityScope.All);
+
     [Fact]
     public async Task ChatAsync_UsesRagAndReturnsSources()
     {
@@ -23,7 +34,10 @@ public sealed class AgentServiceTests
         var session = new FakeToolSession();
         var service = CreateService(languageModel, session, retrieval);
 
-        var result = await service.ChatAsync(new AgentChatRequest("How do I escalate an incident?"), CancellationToken.None);
+        var result = await service.ChatAsync(
+            new AgentChatRequest("How do I escalate an incident?"),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
 
         Assert.Equal("Escalate the incident within one business day.", result.Message);
         Assert.Equal(["search_knowledge"], result.ToolsUsed);
@@ -47,7 +61,10 @@ public sealed class AgentServiceTests
             session,
             new FakeKnowledgeRetrievalService());
 
-        var result = await service.ChatAsync(new AgentChatRequest("What orders are delayed?"), CancellationToken.None);
+        var result = await service.ChatAsync(
+            new AgentChatRequest("What orders are delayed?"),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
 
         Assert.Equal("There is one delayed order.", result.Message);
         Assert.Equal(["get_delayed_orders"], result.ToolsUsed);
@@ -76,7 +93,10 @@ public sealed class AgentServiceTests
             session,
             new FakeKnowledgeRetrievalService(source));
 
-        var result = await service.ChatAsync(new AgentChatRequest("Which suppliers meet the purchasing policy?"), CancellationToken.None);
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Which suppliers meet the purchasing policy?"),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
 
         Assert.Equal(["search_knowledge", "list_suppliers"], result.ToolsUsed);
         Assert.Equal([source], result.RagSources);
@@ -104,7 +124,10 @@ public sealed class AgentServiceTests
             session,
             new FakeKnowledgeRetrievalService());
 
-        await service.ChatAsync(new AgentChatRequest("Create a delay incident."), CancellationToken.None);
+        await service.ChatAsync(
+            new AgentChatRequest("Create a delay incident."),
+            OperatorAuthorization,
+            CancellationToken.None);
 
         var invocation = session.Invocations.Single();
         Assert.Equal("create_incident", invocation.ToolName);
@@ -129,7 +152,7 @@ public sealed class AgentServiceTests
             new AgentServiceOptions(MaximumToolRounds: 1));
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.ChatAsync(new AgentChatRequest("Keep looking."), CancellationToken.None));
+            service.ChatAsync(new AgentChatRequest("Keep looking."), ReadOnlyAuthorization, CancellationToken.None));
 
         Assert.Equal("Agent exceeded the configured maximum of 1 tool rounds.", exception.Message);
         Assert.Equal(2, languageModel.Requests.Count);
@@ -145,12 +168,165 @@ public sealed class AgentServiceTests
             Final("Please provide a valid knowledge search query."));
         var service = CreateService(languageModel, new FakeToolSession(), new FakeKnowledgeRetrievalService());
 
-        var result = await service.ChatAsync(new AgentChatRequest("Find the policy."), CancellationToken.None);
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Find the policy."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
 
         Assert.Equal("Please provide a valid knowledge search query.", result.Message);
         var toolResult = Assert.IsType<AgentToolMessage>(languageModel.Requests[1].Messages[^1]);
         Assert.True(toolResult.IsError);
         Assert.Contains("valid JSON", toolResult.Content);
+    }
+
+    [Fact]
+    public async Task ChatAsync_ReadOnlyContext_ExposesAndExecutesLocalSearchAndAllReadMcpTools()
+    {
+        var session = new FakeToolSession(
+            new AgentToolDefinition(AgentToolCapabilityMap.ListSuppliersToolName, "Lists suppliers.", EmptyObjectSchema()),
+            new AgentToolDefinition(AgentToolCapabilityMap.GetSupplierToolName, "Gets a supplier.", EmptyObjectSchema()),
+            new AgentToolDefinition(AgentToolCapabilityMap.GetDelayedOrdersToolName, "Lists delayed orders.", EmptyObjectSchema()),
+            new AgentToolDefinition(AgentToolCapabilityMap.CreateIncidentToolName, "Creates an incident.", EmptyObjectSchema()));
+        var languageModel = new ScriptedLanguageModel(
+            new AgentLanguageModelResponse(string.Empty,
+            [
+                new AgentToolCall("call-rag", AgentToolCapabilityMap.SearchKnowledgeToolName, "{\"query\":\"policy\"}"),
+                new AgentToolCall("call-list", AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                new AgentToolCall("call-supplier", AgentToolCapabilityMap.GetSupplierToolName, "{}"),
+                new AgentToolCall("call-delayed", AgentToolCapabilityMap.GetDelayedOrdersToolName, "{}")
+            ]),
+            Final("Read operations completed."));
+        var retrieval = new FakeKnowledgeRetrievalService();
+        var service = CreateService(languageModel, session, retrieval);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Find policy and supplier information."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal(
+        [
+            AgentToolCapabilityMap.SearchKnowledgeToolName,
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            AgentToolCapabilityMap.GetSupplierToolName,
+            AgentToolCapabilityMap.GetDelayedOrdersToolName
+        ], languageModel.Requests[0].Tools.Select(tool => tool.Name));
+        Assert.DoesNotContain(
+            languageModel.Requests[0].Tools,
+            tool => tool.Name == AgentToolCapabilityMap.CreateIncidentToolName);
+        Assert.Equal(AgentToolCapabilityMap.SearchKnowledgeToolName, result.ToolsUsed[0]);
+        Assert.Equal(
+        [
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            AgentToolCapabilityMap.GetSupplierToolName,
+            AgentToolCapabilityMap.GetDelayedOrdersToolName
+        ], session.Invocations.Select(invocation => invocation.ToolName));
+        Assert.Single(retrieval.Inputs);
+    }
+
+    [Fact]
+    public async Task ChatAsync_ReadOnlyContext_DeniesManualCreateIncidentWithoutInvokingMcp()
+    {
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.CreateIncidentToolName,
+            "Creates an incident.",
+            EmptyObjectSchema()));
+        var languageModel = new ScriptedLanguageModel(
+            ToolCall(AgentToolCapabilityMap.CreateIncidentToolName, "{}"),
+            Final("The incident was not created."));
+        var retrieval = new FakeKnowledgeRetrievalService();
+        var service = CreateService(languageModel, session, retrieval);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.DoesNotContain(
+            languageModel.Requests[0].Tools,
+            tool => tool.Name == AgentToolCapabilityMap.CreateIncidentToolName);
+        Assert.Empty(session.Invocations);
+        Assert.Empty(retrieval.Inputs);
+        Assert.Empty(result.ToolsUsed);
+        var toolResult = Assert.IsType<AgentToolMessage>(languageModel.Requests[1].Messages[^1]);
+        Assert.True(toolResult.IsError);
+        Assert.Contains("not authorized", toolResult.Content);
+    }
+
+    [Fact]
+    public async Task ChatAsync_OperatorContext_ExposesAndExecutesCreateIncident()
+    {
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.CreateIncidentToolName,
+            "Creates an incident.",
+            EmptyObjectSchema()));
+        var languageModel = new ScriptedLanguageModel(
+            ToolCall(AgentToolCapabilityMap.CreateIncidentToolName, "{}"),
+            Final("The incident was created."));
+        var service = CreateService(languageModel, session, new FakeKnowledgeRetrievalService());
+
+        await service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            OperatorAuthorization,
+            CancellationToken.None);
+
+        Assert.Contains(
+            languageModel.Requests[0].Tools,
+            tool => tool.Name == AgentToolCapabilityMap.CreateIncidentToolName);
+        Assert.Equal(AgentToolCapabilityMap.CreateIncidentToolName, session.Invocations.Single().ToolName);
+    }
+
+    [Fact]
+    public async Task ChatAsync_UnmappedToolIsDeniedByDefaultWithoutInvokingDependencies()
+    {
+        const string unmappedToolName = "unmapped_tool";
+        var session = new FakeToolSession(new AgentToolDefinition(unmappedToolName, "Unmapped.", EmptyObjectSchema()));
+        var languageModel = new ScriptedLanguageModel(
+            ToolCall(unmappedToolName, "{}"),
+            Final("The unmapped tool is unavailable."));
+        var retrieval = new FakeKnowledgeRetrievalService();
+        var service = CreateService(languageModel, session, retrieval);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Use an unmapped tool."),
+            OperatorAuthorization,
+            CancellationToken.None);
+
+        Assert.DoesNotContain(languageModel.Requests[0].Tools, tool => tool.Name == unmappedToolName);
+        Assert.Empty(session.Invocations);
+        Assert.Empty(retrieval.Inputs);
+        Assert.Empty(result.ToolsUsed);
+        Assert.True(Assert.IsType<AgentToolMessage>(languageModel.Requests[1].Messages[^1]).IsError);
+    }
+
+    [Fact]
+    public async Task ChatAsync_DeniedToolsDoNotInvokeMcpOrRag()
+    {
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.CreateIncidentToolName,
+            "Creates an incident.",
+            EmptyObjectSchema()));
+        var languageModel = new ScriptedLanguageModel(
+            new AgentLanguageModelResponse(string.Empty,
+            [
+                new AgentToolCall("call-incident", AgentToolCapabilityMap.CreateIncidentToolName, "{}"),
+                new AgentToolCall("call-rag", AgentToolCapabilityMap.SearchKnowledgeToolName, "{\"query\":\"policy\"}")
+            ]),
+            Final("No tools were authorized."));
+        var retrieval = new FakeKnowledgeRetrievalService();
+        var service = CreateService(languageModel, session, retrieval);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Use every tool."),
+            new AgentAuthorizationContext([]),
+            CancellationToken.None);
+
+        Assert.Empty(session.Invocations);
+        Assert.Empty(retrieval.Inputs);
+        Assert.Empty(result.ToolsUsed);
+        Assert.All(
+            languageModel.Requests[1].Messages.OfType<AgentToolMessage>(),
+            toolMessage => Assert.True(toolMessage.IsError));
     }
 
     private static AgentService CreateService(

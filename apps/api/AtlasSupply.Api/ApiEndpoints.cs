@@ -118,9 +118,13 @@ public static class ApiEndpoints
         app.MapPost("/api/chat", async (
             AgentChatRequest request,
             AgentService agentService,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await agentService.ChatAsync(request, cancellationToken);
+            var authorizationContext = AgentAuthorizationContext.FromValidatedScopeClaimValues(
+                httpContext.User.FindAll(AgentAuthorizationContext.ScopeClaimType)
+                    .Select(static claim => claim.Value));
+            var result = await agentService.ChatAsync(request, authorizationContext, cancellationToken);
             return Results.Ok(result);
         })
             .WithName("Chat")

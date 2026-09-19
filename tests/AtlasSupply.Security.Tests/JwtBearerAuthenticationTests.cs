@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using AtlasSupply.Application;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Hosting;
@@ -48,6 +49,26 @@ public sealed class JwtBearerAuthenticationTests
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal(1, factory.LanguageModel.CompletionCount);
         Assert.Equal(1, factory.ToolProvider.OpenSessionCount);
+    }
+
+    [Fact]
+    public async Task Chat_DerivesToolCapabilitiesFromTheValidatedJwtScopeClaimOnly()
+    {
+        using var factory = new AuthenticatedApiFactory();
+        factory.ToolProvider.Tools =
+        [
+            new AgentToolDefinition("get_supplier", "Gets a supplier.", EmptyObjectSchema()),
+            new AgentToolDefinition("create_incident", "Creates an incident.", EmptyObjectSchema())
+        ];
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateToken());
+
+        var response = await client.PostAsJsonAsync(
+            "/api/chat",
+            new { message = "Hello", scopes = new[] { "incidents.create" } });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(["get_supplier"], factory.LanguageModel.Requests.Single().Tools.Select(tool => tool.Name));
     }
 
     [Fact]
@@ -132,6 +153,12 @@ public sealed class JwtBearerAuthenticationTests
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
+    private static JsonElement EmptyObjectSchema()
+    {
+        using var document = JsonDocument.Parse("{\"type\":\"object\"}");
+        return document.RootElement.Clone();
+    }
+
     private sealed class AuthenticatedApiFactory : WebApplicationFactory<Program>
     {
         internal TestAgentLanguageModel LanguageModel { get; } = new();
@@ -182,11 +209,14 @@ public sealed class JwtBearerAuthenticationTests
     {
         internal int CompletionCount { get; private set; }
 
+        internal List<AgentLanguageModelRequest> Requests { get; } = [];
+
         public Task<AgentLanguageModelResponse> CompleteAsync(
             AgentLanguageModelRequest request,
             CancellationToken cancellationToken)
         {
             CompletionCount++;
+            Requests.Add(request);
             return Task.FromResult(new AgentLanguageModelResponse("Test response", []));
         }
     }
@@ -195,20 +225,22 @@ public sealed class JwtBearerAuthenticationTests
     {
         internal int OpenSessionCount { get; private set; }
 
+        internal IReadOnlyList<AgentToolDefinition> Tools { get; set; } = [];
+
         public Task<IAgentToolSession> OpenSessionAsync(CancellationToken cancellationToken)
         {
             OpenSessionCount++;
-            return Task.FromResult<IAgentToolSession>(new TestAgentToolSession());
+            return Task.FromResult<IAgentToolSession>(new TestAgentToolSession(Tools));
         }
     }
 
-    private sealed class TestAgentToolSession : IAgentToolSession
+    private sealed class TestAgentToolSession(IReadOnlyList<AgentToolDefinition> tools) : IAgentToolSession
     {
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
         public Task<IReadOnlyList<AgentToolDefinition>> DiscoverToolsAsync(CancellationToken cancellationToken)
         {
-            return Task.FromResult<IReadOnlyList<AgentToolDefinition>>([]);
+            return Task.FromResult(tools);
         }
 
         public Task<AgentToolExecutionResult> InvokeAsync(
