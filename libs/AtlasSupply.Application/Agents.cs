@@ -1,4 +1,6 @@
 using System.Text.Json;
+using AtlasSupply.Domain;
+using Microsoft.Extensions.Logging;
 
 namespace AtlasSupply.Application;
 
@@ -76,6 +78,9 @@ public sealed class AgentService(
     IAgentLanguageModel languageModel,
     IAgentToolProvider toolProvider,
     IKnowledgeRetrievalService knowledgeRetrievalService,
+    IAgentToolAuditWriter auditWriter,
+    TimeProvider timeProvider,
+    ILogger<AgentService> logger,
     AgentServiceOptions? options = null)
 {
     private const int MaximumMessageLength = 4_000;
@@ -129,8 +134,20 @@ public sealed class AgentService(
 
             foreach (var toolCall in completion.ToolCalls)
             {
-                if (!AgentToolCapabilityMap.IsAuthorized(toolCall.Name, authorizationContext))
+                if (!AgentToolCapabilityMap.TryGetRequiredCapability(toolCall.Name, out var requiredCapability) ||
+                    !authorizationContext.HasCapability(requiredCapability))
                 {
+                    if (requiredCapability is not null)
+                    {
+                        await WriteAuditAttemptAsync(
+                            authorizationContext,
+                            toolCall.Name,
+                            requiredCapability,
+                            authorized: false,
+                            outcome: "AuthorizationDenied",
+                            cancellationToken);
+                    }
+
                     messages.Add(new AgentToolMessage(
                         toolCall.Id,
                         toolCall.Name,
@@ -139,24 +156,47 @@ public sealed class AgentService(
                     continue;
                 }
 
+                var auditRecord = await WriteAuditAttemptAsync(
+                    authorizationContext,
+                    toolCall.Name,
+                    requiredCapability,
+                    authorized: true,
+                    outcome: "ExecutionStarted",
+                    cancellationToken);
+
                 if (!toolsByName.ContainsKey(toolCall.Name))
                 {
+                    auditRecord.Complete(succeeded: false, "ToolUnavailable");
+                    await FinalizeAuditAsync(auditRecord, cancellationToken);
                     throw new InvalidOperationException($"Agent requested unavailable tool '{toolCall.Name}'.");
                 }
 
                 AgentToolExecutionResult result;
+                try
+                {
+                    if (toolCall.Name == AgentToolCapabilityMap.SearchKnowledgeToolName)
+                    {
+                        result = await SearchKnowledgeAsync(toolCall, ragSources, cancellationToken);
+                    }
+                    else
+                    {
+                        var arguments = ParseArguments(toolCall);
+                        result = await toolSession.InvokeAsync(
+                            new AgentToolInvocation(toolCall.Id, toolCall.Name, arguments),
+                            cancellationToken);
+                    }
+                }
+                catch
+                {
+                    auditRecord.Complete(succeeded: false, "ToolExecutionFailed");
+                    await FinalizeAuditAsync(auditRecord, cancellationToken);
+                    throw;
+                }
 
-                if (toolCall.Name == AgentToolCapabilityMap.SearchKnowledgeToolName)
-                {
-                    result = await SearchKnowledgeAsync(toolCall, ragSources, cancellationToken);
-                }
-                else
-                {
-                    var arguments = ParseArguments(toolCall);
-                    result = await toolSession.InvokeAsync(
-                        new AgentToolInvocation(toolCall.Id, toolCall.Name, arguments),
-                        cancellationToken);
-                }
+                auditRecord.Complete(
+                    succeeded: !result.IsError,
+                    result.IsError ? "ToolExecutionFailed" : "Succeeded");
+                await FinalizeAuditAsync(auditRecord, cancellationToken);
 
                 toolsUsed.Add(toolCall.Name);
                 messages.Add(new AgentToolMessage(toolCall.Id, toolCall.Name, result.Content, result.IsError));
@@ -234,6 +274,53 @@ public sealed class AgentService(
 
     private static AgentToolExecutionResult CreateAuthorizationDeniedResult() =>
         new(JsonSerializer.Serialize(new { error = "Tool is not authorized." }), IsError: true);
+
+    private async Task<AgentToolAuditRecord> WriteAuditAttemptAsync(
+        AgentAuthorizationContext authorizationContext,
+        string toolName,
+        AgentCapabilityScope requiredCapability,
+        bool authorized,
+        string outcome,
+        CancellationToken cancellationToken)
+    {
+        var auditRecord = new AgentToolAuditRecord(
+            authorizationContext.UserId,
+            authorizationContext.Username,
+            toolName,
+            requiredCapability.Value,
+            authorized,
+            succeeded: false,
+            timeProvider.GetUtcNow().UtcDateTime,
+            outcome);
+        try
+        {
+            await auditWriter.WriteAttemptAsync(auditRecord, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            throw new AgentToolAuditException("Unable to persist the agent tool audit record.", exception);
+        }
+
+        return auditRecord;
+    }
+
+    private async Task FinalizeAuditAsync(
+        AgentToolAuditRecord auditRecord,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await auditWriter.WriteOutcomeAsync(auditRecord, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Failed to finalize the audit record {AuditRecordId} for tool {ToolName}.",
+                auditRecord.Id,
+                auditRecord.ToolName);
+        }
+    }
 
     private static JsonElement CreateSearchKnowledgeSchema()
     {

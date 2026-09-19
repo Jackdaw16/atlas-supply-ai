@@ -8,11 +8,26 @@ public sealed class AgentAuthorizationContext
 
     private readonly HashSet<AgentCapabilityScope> _capabilities;
 
-    public AgentAuthorizationContext(IEnumerable<AgentCapabilityScope> capabilities)
+    public AgentAuthorizationContext(
+        Guid userId,
+        string username,
+        IEnumerable<AgentCapabilityScope> capabilities)
     {
+        if (userId == Guid.Empty)
+        {
+            throw new ArgumentException("Authenticated user id is required.", nameof(userId));
+        }
+
+        ArgumentException.ThrowIfNullOrWhiteSpace(username);
         ArgumentNullException.ThrowIfNull(capabilities);
+        UserId = userId;
+        Username = username.Trim();
         _capabilities = [.. capabilities];
     }
+
+    public Guid UserId { get; }
+
+    public string Username { get; }
 
     public bool HasCapability(AgentCapabilityScope capability)
     {
@@ -20,7 +35,10 @@ public sealed class AgentAuthorizationContext
         return _capabilities.Contains(capability);
     }
 
-    public static AgentAuthorizationContext FromValidatedScopeClaimValues(IEnumerable<string> claimValues)
+    public static AgentAuthorizationContext FromValidatedScopeClaimValues(
+        Guid userId,
+        string username,
+        IEnumerable<string> claimValues)
     {
         ArgumentNullException.ThrowIfNull(claimValues);
 
@@ -34,7 +52,7 @@ public sealed class AgentAuthorizationContext
             }
         }
 
-        return new AgentAuthorizationContext(capabilities);
+        return new AgentAuthorizationContext(userId, username, capabilities);
     }
 }
 

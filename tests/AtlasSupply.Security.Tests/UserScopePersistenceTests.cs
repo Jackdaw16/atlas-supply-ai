@@ -66,6 +66,42 @@ public sealed class UserScopePersistenceTests
         Assert.Throws<ArgumentException>(() => AgentCapabilityScope.FromValue("orders.write"));
     }
 
+    [Fact]
+    public void AgentToolAuditRecords_AreMappedWithRequiredFieldsIndexesAndNoArguments()
+    {
+        using var context = new AtlasSupplyDbContext(CreateOptions());
+        var auditEntityType = context.Model.FindEntityType(typeof(AgentToolAuditRecord))!;
+
+        Assert.Equal("agent_tool_audit_records", auditEntityType.GetTableName());
+        Assert.All(
+            [
+                nameof(AgentToolAuditRecord.UserId),
+                nameof(AgentToolAuditRecord.Username),
+                nameof(AgentToolAuditRecord.ToolName),
+                nameof(AgentToolAuditRecord.RequiredScope),
+                nameof(AgentToolAuditRecord.Authorized),
+                nameof(AgentToolAuditRecord.Succeeded),
+                nameof(AgentToolAuditRecord.TimestampUtc),
+                nameof(AgentToolAuditRecord.Outcome)
+            ],
+            propertyName => Assert.False(auditEntityType.FindProperty(propertyName)!.IsNullable));
+        Assert.Contains(
+            auditEntityType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name).SequenceEqual([nameof(AgentToolAuditRecord.TimestampUtc)]));
+        Assert.Contains(
+            auditEntityType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name).SequenceEqual([nameof(AgentToolAuditRecord.UserId)]));
+        Assert.Contains(
+            auditEntityType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name).SequenceEqual([nameof(AgentToolAuditRecord.ToolName)]));
+        Assert.Contains(
+            auditEntityType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name).SequenceEqual([nameof(AgentToolAuditRecord.Authorized)]));
+        Assert.Null(auditEntityType.FindProperty("Arguments"));
+        Assert.Null(auditEntityType.FindProperty("AccessToken"));
+        Assert.Null(auditEntityType.FindProperty("AuthorizationHeader"));
+    }
+
     private static DbContextOptions<AtlasSupplyDbContext> CreateOptions()
     {
         return new DbContextOptionsBuilder<AtlasSupplyDbContext>()

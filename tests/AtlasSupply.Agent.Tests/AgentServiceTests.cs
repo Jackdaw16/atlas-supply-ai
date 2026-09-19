@@ -1,13 +1,19 @@
 using System.Text.Json;
 using AtlasSupply.Application;
 using AtlasSupply.Domain;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace AtlasSupply.Agent.Tests;
 
 public sealed class AgentServiceTests
 {
+    private static readonly Guid ReadOnlyUserId = Guid.Parse("77777777-7777-7777-7777-777777777701");
+    private static readonly Guid OperatorUserId = Guid.Parse("77777777-7777-7777-7777-777777777702");
+
     private static readonly AgentAuthorizationContext ReadOnlyAuthorization = new(
+        ReadOnlyUserId,
+        "readonly-user",
     [
         AgentCapabilityScope.KnowledgeSearch,
         AgentCapabilityScope.SuppliersList,
@@ -15,7 +21,10 @@ public sealed class AgentServiceTests
         AgentCapabilityScope.OrdersDelayedRead
     ]);
 
-    private static readonly AgentAuthorizationContext OperatorAuthorization = new(AgentCapabilityScope.All);
+    private static readonly AgentAuthorizationContext OperatorAuthorization = new(
+        OperatorUserId,
+        "operator-user",
+        AgentCapabilityScope.All);
 
     [Fact]
     public async Task ChatAsync_UsesRagAndReturnsSources()
@@ -314,28 +323,191 @@ public sealed class AgentServiceTests
             ]),
             Final("No tools were authorized."));
         var retrieval = new FakeKnowledgeRetrievalService();
-        var service = CreateService(languageModel, session, retrieval);
+        var auditWriter = new FakeAgentToolAuditWriter();
+        var service = CreateService(languageModel, session, retrieval, auditWriter: auditWriter);
 
         var result = await service.ChatAsync(
             new AgentChatRequest("Use every tool."),
-            new AgentAuthorizationContext([]),
+            new AgentAuthorizationContext(ReadOnlyUserId, "readonly-user", []),
             CancellationToken.None);
 
         Assert.Empty(session.Invocations);
         Assert.Empty(retrieval.Inputs);
         Assert.Empty(result.ToolsUsed);
+        Assert.Equal(2, auditWriter.Records.Count);
+        Assert.All(auditWriter.Records, auditRecord =>
+        {
+            Assert.False(auditRecord.Authorized);
+            Assert.False(auditRecord.Succeeded);
+            Assert.Equal("AuthorizationDenied", auditRecord.Outcome);
+        });
         Assert.All(
             languageModel.Requests[1].Messages.OfType<AgentToolMessage>(),
             toolMessage => Assert.True(toolMessage.IsError));
+    }
+
+    [Fact]
+    public async Task ChatAsync_AuditsAuthorizedSuccessWithValidatedIdentityAndWithoutArguments()
+    {
+        const string secret = "test-only-access-token";
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            "Lists suppliers.",
+            EmptyObjectSchema()));
+        var auditWriter = new FakeAgentToolAuditWriter();
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.ListSuppliersToolName, $"{{\"accessToken\":\"{secret}\"}}"),
+                Final("Suppliers listed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            auditWriter: auditWriter);
+
+        await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        var auditRecord = Assert.Single(auditWriter.Records);
+        Assert.NotEqual(Guid.Empty, auditRecord.Id);
+        Assert.Equal(ReadOnlyUserId, auditRecord.UserId);
+        Assert.Equal("readonly-user", auditRecord.Username);
+        Assert.Equal(AgentToolCapabilityMap.ListSuppliersToolName, auditRecord.ToolName);
+        Assert.Equal(AgentCapabilityScope.SuppliersList.Value, auditRecord.RequiredScope);
+        Assert.True(auditRecord.Authorized);
+        Assert.True(auditRecord.Succeeded);
+        Assert.Equal("Succeeded", auditRecord.Outcome);
+        Assert.Equal(1, auditWriter.OutcomeWriteCount);
+        Assert.Equal(DateTimeKind.Utc, auditRecord.TimestampUtc.Kind);
+        Assert.DoesNotContain(secret, JsonSerializer.Serialize(auditRecord), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ChatAsync_AuditsAuthorizedToolFailuresWithControlledOutcome()
+    {
+        var session = new FakeToolSession(
+            new AgentToolDefinition(
+                AgentToolCapabilityMap.ListSuppliersToolName,
+                "Lists suppliers.",
+                EmptyObjectSchema()),
+            new AgentToolExecutionResult("{\"error\":\"upstream failure\"}", IsError: true));
+        var auditWriter = new FakeAgentToolAuditWriter();
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                Final("Supplier lookup failed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            auditWriter: auditWriter);
+
+        await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        var auditRecord = Assert.Single(auditWriter.Records);
+        Assert.True(auditRecord.Authorized);
+        Assert.False(auditRecord.Succeeded);
+        Assert.Equal("ToolExecutionFailed", auditRecord.Outcome);
+        Assert.Single(session.Invocations);
+    }
+
+    [Fact]
+    public async Task ChatAsync_ReturnsSuccessfulToolResultWhenAuditFinalizationFails()
+    {
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.CreateIncidentToolName,
+            "Creates an incident.",
+            EmptyObjectSchema()));
+        var auditWriter = new FakeAgentToolAuditWriter(throwOnOutcome: true);
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.CreateIncidentToolName, "{}"),
+                Final("The incident was created.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            auditWriter: auditWriter);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            OperatorAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("The incident was created.", result.Message);
+        Assert.Equal([AgentToolCapabilityMap.CreateIncidentToolName], result.ToolsUsed);
+        Assert.Single(session.Invocations);
+        Assert.Equal(1, auditWriter.OutcomeWriteCount);
+    }
+
+    [Fact]
+    public async Task ChatAsync_PreservesToolFailureWhenAuditFinalizationFails()
+    {
+        var session = new FakeToolSession(
+            new AgentToolDefinition(
+                AgentToolCapabilityMap.CreateIncidentToolName,
+                "Creates an incident.",
+                EmptyObjectSchema()),
+            new AgentToolExecutionResult("{\"error\":\"mutation failed\"}", IsError: true));
+        var languageModel = new ScriptedLanguageModel(
+            ToolCall(AgentToolCapabilityMap.CreateIncidentToolName, "{}"),
+            Final("The incident was not created."));
+        var auditWriter = new FakeAgentToolAuditWriter(throwOnOutcome: true);
+        var service = CreateService(
+            languageModel,
+            session,
+            new FakeKnowledgeRetrievalService(),
+            auditWriter: auditWriter);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            OperatorAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("The incident was not created.", result.Message);
+        var toolResult = Assert.IsType<AgentToolMessage>(languageModel.Requests[1].Messages[^1]);
+        Assert.True(toolResult.IsError);
+        Assert.Equal("{\"error\":\"mutation failed\"}", toolResult.Content);
+        Assert.Single(session.Invocations);
+        Assert.Equal(1, auditWriter.OutcomeWriteCount);
+    }
+
+    [Fact]
+    public async Task ChatAsync_DoesNotInvokeToolWhenInitialAuditCreationFails()
+    {
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.CreateIncidentToolName,
+            "Creates an incident.",
+            EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(ToolCall(AgentToolCapabilityMap.CreateIncidentToolName, "{}")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            auditWriter: new FakeAgentToolAuditWriter(throwOnAttempt: true));
+
+        var exception = await Assert.ThrowsAsync<AgentToolAuditException>(() => service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            OperatorAuthorization,
+            CancellationToken.None));
+
+        Assert.Equal("Unable to persist the agent tool audit record.", exception.Message);
+        Assert.Empty(session.Invocations);
     }
 
     private static AgentService CreateService(
         ScriptedLanguageModel languageModel,
         FakeToolSession toolSession,
         FakeKnowledgeRetrievalService retrieval,
-        AgentServiceOptions? options = null)
+        AgentServiceOptions? options = null,
+        FakeAgentToolAuditWriter? auditWriter = null)
     {
-        return new AgentService(languageModel, new FakeToolProvider(toolSession), retrieval, options);
+        return new AgentService(
+            languageModel,
+            new FakeToolProvider(toolSession),
+            retrieval,
+            auditWriter ?? new FakeAgentToolAuditWriter(),
+            TimeProvider.System,
+            NullLogger<AgentService>.Instance,
+            options);
     }
 
     private static AgentLanguageModelResponse ToolCall(string name, string arguments) =>
@@ -370,22 +542,73 @@ public sealed class AgentServiceTests
             Task.FromResult<IAgentToolSession>(session);
     }
 
-    private sealed class FakeToolSession(params AgentToolDefinition[] tools) : IAgentToolSession
+    private sealed class FakeToolSession : IAgentToolSession
     {
+        private readonly AgentToolDefinition[] _tools;
+        private readonly AgentToolExecutionResult _result;
+
+        public FakeToolSession(params AgentToolDefinition[] tools)
+            : this(tools, result: null)
+        {
+        }
+
+        public FakeToolSession(AgentToolDefinition tool, AgentToolExecutionResult result)
+            : this([tool], result)
+        {
+        }
+
+        public FakeToolSession(AgentToolDefinition[] tools, AgentToolExecutionResult? result = null)
+        {
+            _tools = tools;
+            _result = result ?? new AgentToolExecutionResult("{\"ok\":true}", IsError: false);
+        }
+
         public List<AgentToolInvocation> Invocations { get; } = [];
 
         public Task<IReadOnlyList<AgentToolDefinition>> DiscoverToolsAsync(CancellationToken cancellationToken) =>
-            Task.FromResult<IReadOnlyList<AgentToolDefinition>>(tools);
+            Task.FromResult<IReadOnlyList<AgentToolDefinition>>(_tools);
 
         public Task<AgentToolExecutionResult> InvokeAsync(
             AgentToolInvocation invocation,
             CancellationToken cancellationToken)
         {
             Invocations.Add(invocation);
-            return Task.FromResult(new AgentToolExecutionResult("{\"ok\":true}", IsError: false));
+            return Task.FromResult(_result);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class FakeAgentToolAuditWriter(
+        bool throwOnAttempt = false,
+        bool throwOnOutcome = false) : IAgentToolAuditWriter
+    {
+        public List<AgentToolAuditRecord> Records { get; } = [];
+
+        public int OutcomeWriteCount { get; private set; }
+
+        public Task WriteAttemptAsync(AgentToolAuditRecord auditRecord, CancellationToken cancellationToken)
+        {
+            if (throwOnAttempt)
+            {
+                throw new InvalidOperationException("Audit attempt write failed.");
+            }
+
+            Records.Add(auditRecord);
+            return Task.CompletedTask;
+        }
+
+        public Task WriteOutcomeAsync(AgentToolAuditRecord auditRecord, CancellationToken cancellationToken)
+        {
+            OutcomeWriteCount++;
+
+            if (throwOnOutcome)
+            {
+                throw new InvalidOperationException("Audit outcome write failed.");
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeKnowledgeRetrievalService(params KnowledgeSearchResult[] results) : IKnowledgeRetrievalService

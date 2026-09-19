@@ -121,7 +121,18 @@ public static class ApiEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
+            var userId = Guid.TryParse(httpContext.User.FindFirst("sub")?.Value, out var subjectId)
+                ? subjectId
+                : throw new InvalidOperationException("Validated token subject is invalid.");
+            var username = httpContext.User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                throw new InvalidOperationException("Validated token username is missing.");
+            }
+
             var authorizationContext = AgentAuthorizationContext.FromValidatedScopeClaimValues(
+                userId,
+                username,
                 httpContext.User.FindAll(AgentAuthorizationContext.ScopeClaimType)
                     .Select(static claim => claim.Value));
             var result = await agentService.ChatAsync(request, authorizationContext, cancellationToken);
