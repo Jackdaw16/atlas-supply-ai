@@ -3,6 +3,31 @@ output "gcp_project_id" {
   value       = var.gcp_project_id
 }
 
+output "gcp_region" {
+  description = "Primary Google Cloud region for Atlas Supply production resources."
+  value       = var.gcp_region
+}
+
+output "api_runtime_service_account_email" {
+  description = "Email address of the API runtime service account."
+  value       = google_service_account.api_runtime.email
+}
+
+output "mcp_runtime_service_account_email" {
+  description = "Email address of the MCP runtime service account."
+  value       = google_service_account.mcp_runtime.email
+}
+
+output "github_deploy_service_account_email" {
+  description = "Email address of the GitHub deployment service account."
+  value       = google_service_account.github_deploy.email
+}
+
+output "github_workload_identity_provider" {
+  description = "Full Workload Identity Provider resource name for google-github-actions/auth."
+  value       = google_iam_workload_identity_pool_provider.github.name
+}
+
 output "cloudflare_pages_project_name" {
   description = "Name of the Cloudflare Pages project."
   value       = cloudflare_pages_project.web.name
