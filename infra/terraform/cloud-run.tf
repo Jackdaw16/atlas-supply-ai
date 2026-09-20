@@ -32,7 +32,10 @@ resource "google_cloud_run_v2_service" "api" {
     ]
   }
 
-  depends_on = [google_project_service.required["run.googleapis.com"]]
+  depends_on = [
+    google_project_service.required["run.googleapis.com"],
+    google_service_account_iam_member.terraform_hcp_runtime_service_account_user["api"],
+  ]
 }
 
 resource "google_cloud_run_v2_service" "mcp" {
@@ -69,5 +72,8 @@ resource "google_cloud_run_v2_service" "mcp" {
     ]
   }
 
-  depends_on = [google_project_service.required["run.googleapis.com"]]
+  depends_on = [
+    google_project_service.required["run.googleapis.com"],
+    google_service_account_iam_member.terraform_hcp_runtime_service_account_user["mcp"],
+  ]
 }
