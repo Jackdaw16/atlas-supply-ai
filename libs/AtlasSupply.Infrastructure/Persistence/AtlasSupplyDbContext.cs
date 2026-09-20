@@ -14,6 +14,10 @@ public sealed class AtlasSupplyDbContext(DbContextOptions<AtlasSupplyDbContext> 
 
     public DbSet<Incident> Incidents => Set<Incident>();
 
+    public DbSet<User> Users => Set<User>();
+
+    internal DbSet<AgentToolAuditRecord> AgentToolAuditRecords => Set<AgentToolAuditRecord>();
+
     internal DbSet<KnowledgeDocument> KnowledgeDocuments => Set<KnowledgeDocument>();
 
     internal DbSet<KnowledgeChunk> KnowledgeChunks => Set<KnowledgeChunk>();

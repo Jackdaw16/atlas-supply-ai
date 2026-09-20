@@ -3,9 +3,11 @@ using AtlasSupply.Infrastructure.Agents;
 using AtlasSupply.Infrastructure.Knowledge;
 using AtlasSupply.Infrastructure.Persistence;
 using AtlasSupply.Infrastructure.Persistence.Repositories;
+using AtlasSupply.Infrastructure.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace AtlasSupply.Infrastructure;
 
@@ -28,6 +30,11 @@ public static class DependencyInjection
         services.AddScoped<ISupplierRepository, SupplierRepository>();
         services.AddScoped<IPurchaseOrderRepository, PurchaseOrderRepository>();
         services.AddScoped<IIncidentRepository, IncidentRepository>();
+        services.AddScoped<IUserCredentialStore, AuthenticationUserRepository>();
+        services.AddScoped<IAgentToolAuditWriter, EfAgentToolAuditWriter>();
+        services.AddSingleton<IPasswordVerifier, UserPasswordHasher>();
+        services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<IAccessTokenIssuer, JwtAccessTokenIssuer>();
         services.AddSingleton<IMarkdownKnowledgeChunker, MarkdownKnowledgeChunker>();
         services.AddSingleton<IEmbeddingService, OpenAIEmbeddingService>();
         services.AddScoped<IKnowledgeChunkSearch, KnowledgeChunkSearch>();
@@ -39,6 +46,9 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<IAgentLanguageModel>(),
             serviceProvider.GetRequiredService<IAgentToolProvider>(),
             serviceProvider.GetRequiredService<IKnowledgeRetrievalService>(),
+            serviceProvider.GetRequiredService<IAgentToolAuditWriter>(),
+            serviceProvider.GetRequiredService<TimeProvider>(),
+            serviceProvider.GetRequiredService<ILogger<AgentService>>(),
             new AgentServiceOptions(ParseMaximumToolRounds(configuration))));
         services.Configure<KnowledgeIngestionOptions>(options =>
             options.SourceDirectory = configuration["Knowledge:SourceDirectory"] ?? "docs/knowledge");

@@ -1,13 +1,17 @@
-import { Component } from '@angular/core';
+import { Component, inject } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { ChatComponent } from './features/chat/components/chat/chat.component';
+import { RouterOutlet } from '@angular/router';
+import { AuthService } from './core/auth/auth.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [MatIconModule, MatToolbarModule, ChatComponent],
+  imports: [MatButtonModule, MatIconModule, MatToolbarModule, RouterOutlet],
   templateUrl: './app.component.html',
   styleUrl: './app.component.scss'
 })
-export class AppComponent {}
+export class AppComponent {
+  protected readonly authService = inject(AuthService);
+}

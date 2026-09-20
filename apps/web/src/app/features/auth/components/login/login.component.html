@@ -1,0 +1,51 @@
+<main class="login-shell flex min-h-dvh items-center justify-center px-4 py-8 text-slate-100 sm:px-6">
+  <section class="login-card w-full max-w-md rounded-2xl p-6 shadow-[0_32px_80px_-36px_rgba(0,0,0,0.95)] sm:p-8" aria-labelledby="login-title">
+    <div class="mb-8 flex items-center gap-4">
+      <div class="flex size-14 shrink-0 items-center justify-center rounded-xl bg-slate-950/50 p-2.5 ring-1 ring-cyan-300/20">
+        <img class="brand-symbol" src="assets/branding/atlas-symbol.png" alt="Atlas Supply" />
+      </div>
+      <div>
+        <p class="m-0 text-lg font-semibold tracking-wide text-white">Atlas Supply</p>
+        <p class="m-0 text-sm text-slate-400">Operations intelligence</p>
+      </div>
+    </div>
+
+    <div class="mb-7">
+      <p class="m-0 text-xs font-bold uppercase tracking-[0.16em] text-cyan-300">Secure access</p>
+      <h1 id="login-title" class="mb-0 mt-2 text-2xl font-semibold tracking-tight text-white">Sign in to operations</h1>
+      <p class="mb-0 mt-2 text-sm leading-6 text-slate-400">Use your Atlas Supply account to access the operational assistant.</p>
+    </div>
+
+    <form #loginForm="ngForm" (ngSubmit)="signIn(loginForm)" novalidate>
+      <mat-form-field appearance="outline" class="login-field w-full" subscriptSizing="dynamic">
+        <mat-label>Username</mat-label>
+        <input matInput type="text" name="username" autocomplete="username" [(ngModel)]="username" [disabled]="isSubmitting()" required />
+      </mat-form-field>
+
+      <mat-form-field appearance="outline" class="login-field w-full" subscriptSizing="dynamic">
+        <mat-label>Password</mat-label>
+        <input matInput [type]="isPasswordVisible() ? 'text' : 'password'" name="password" autocomplete="current-password" [(ngModel)]="password" [disabled]="isSubmitting()" required />
+        <button mat-icon-button matSuffix type="button" class="password-toggle" [disabled]="isSubmitting()" [attr.aria-label]="isPasswordVisible() ? 'Hide password' : 'Show password'" (click)="togglePasswordVisibility()">
+          <mat-icon class="password-toggle-icon">{{ isPasswordVisible() ? 'visibility_off' : 'visibility' }}</mat-icon>
+        </button>
+      </mat-form-field>
+
+      @if (errorMessage(); as error) {
+        <div class="mt-4 flex items-start gap-2 rounded-lg border border-red-400/25 bg-red-400/10 px-3 py-2.5 text-sm text-red-100" role="alert">
+          <mat-icon class="alert-icon">error_outline</mat-icon>
+          <span>{{ error }}</span>
+        </div>
+      }
+
+      <button mat-flat-button type="submit" class="sign-in-button mt-6 h-12! w-full rounded-xl!" [disabled]="loginForm.invalid || isSubmitting()">
+        @if (isSubmitting()) {
+          <mat-spinner diameter="18" />
+          <span>Signing in</span>
+        } @else {
+          <span>Sign in</span>
+          <mat-icon>arrow_forward</mat-icon>
+        }
+      </button>
+    </form>
+  </section>
+</main>

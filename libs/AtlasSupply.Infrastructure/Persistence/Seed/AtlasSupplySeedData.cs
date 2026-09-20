@@ -4,6 +4,10 @@ namespace AtlasSupply.Infrastructure.Persistence.Seed;
 
 internal static class AtlasSupplySeedData
 {
+    internal static readonly Guid ReadOnlyUserId = Guid.Parse("55555555-5555-5555-5555-555555555501");
+    internal static readonly Guid OperatorUserId = Guid.Parse("55555555-5555-5555-5555-555555555502");
+    internal const string DemoUserPasswordHash = "AQAAAAIAAYagAAAAEC0xelScbohDD1Wy5JYjfcFhomon5G+mKyqcy80ksN2qwkulCTICD301wUF1xterYQ==";
+
     internal static readonly Guid SupplierNorthwindIndustrialId = Guid.Parse("11111111-1111-1111-1111-111111111101");
     internal static readonly Guid SupplierHarborSteelId = Guid.Parse("11111111-1111-1111-1111-111111111102");
     internal static readonly Guid SupplierSilverlinePackagingId = Guid.Parse("11111111-1111-1111-1111-111111111103");

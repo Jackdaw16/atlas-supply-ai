@@ -23,6 +23,44 @@ public static class ApiEndpoints
             service = "AtlasSupply.Api"
         }));
 
+        app.MapPost("/api/auth/login", async (
+            LoginRequest? request,
+            Login login,
+            CancellationToken cancellationToken) =>
+        {
+            if (request is null || string.IsNullOrWhiteSpace(request.Username) || string.IsNullOrWhiteSpace(request.Password))
+            {
+                return Results.ValidationProblem(new Dictionary<string, string[]>
+                {
+                    ["request"] = ["Username and password are required."]
+                });
+            }
+
+            try
+            {
+                var result = await login.ExecuteAsync(
+                    new LoginInput(request.Username, request.Password),
+                    cancellationToken);
+
+                return Results.Ok(new LoginResponse(
+                    result.AccessToken,
+                    result.ExpiresAtUtc,
+                    result.Username,
+                    result.Scopes));
+            }
+            catch (InvalidCredentialsException)
+            {
+                return Results.Unauthorized();
+            }
+        })
+            .WithName("Login")
+            .WithTags("Authentication")
+            .Accepts<LoginRequest>("application/json")
+            .Produces<LoginResponse>(StatusCodes.Status200OK)
+            .Produces(StatusCodes.Status401Unauthorized)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+
         app.MapGet("/api/suppliers", async (
             ListSuppliers listSuppliers,
             CancellationToken cancellationToken) =>
@@ -80,13 +118,29 @@ public static class ApiEndpoints
         app.MapPost("/api/chat", async (
             AgentChatRequest request,
             AgentService agentService,
+            HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var result = await agentService.ChatAsync(request, cancellationToken);
+            var userId = Guid.TryParse(httpContext.User.FindFirst("sub")?.Value, out var subjectId)
+                ? subjectId
+                : throw new InvalidOperationException("Validated token subject is invalid.");
+            var username = httpContext.User.Identity?.Name;
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                throw new InvalidOperationException("Validated token username is missing.");
+            }
+
+            var authorizationContext = AgentAuthorizationContext.FromValidatedScopeClaimValues(
+                userId,
+                username,
+                httpContext.User.FindAll(AgentAuthorizationContext.ScopeClaimType)
+                    .Select(static claim => claim.Value));
+            var result = await agentService.ChatAsync(request, authorizationContext, cancellationToken);
             return Results.Ok(result);
         })
             .WithName("Chat")
             .WithTags("Chat")
+            .RequireAuthorization()
             .Accepts<AgentChatRequest>("application/json")
             .Produces<AgentChatResult>(StatusCodes.Status200OK)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)

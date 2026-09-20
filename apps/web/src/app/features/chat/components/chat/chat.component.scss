@@ -54,12 +54,11 @@ textarea {
   line-height: 1;
 }
 
-.empty-state-icon {
+.empty-state-symbol {
   display: block;
-  width: 2.25rem;
-  height: 2.25rem;
-  font-size: 2.25rem;
-  line-height: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .alert-icon {

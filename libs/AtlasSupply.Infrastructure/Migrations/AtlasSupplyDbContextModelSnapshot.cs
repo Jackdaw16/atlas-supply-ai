@@ -24,6 +24,56 @@ namespace AtlasSupply.Infrastructure.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AtlasSupply.Domain.AgentToolAuditRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("Authorized")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("RequiredScope")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<bool>("Succeeded")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTime>("TimestampUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("ToolName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Authorized");
+
+                    b.HasIndex("TimestampUtc");
+
+                    b.HasIndex("ToolName");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("agent_tool_audit_records", (string)null);
+                });
+
             modelBuilder.Entity("AtlasSupply.Domain.Incident", b =>
                 {
                     b.Property<Guid>("Id")
@@ -394,6 +444,131 @@ namespace AtlasSupply.Infrastructure.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AtlasSupply.Domain.User", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)");
+
+                    b.Property<string>("NormalizedUsername")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("PasswordHash")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique();
+
+                    b.HasIndex("NormalizedUsername")
+                        .IsUnique();
+
+                    b.ToTable("users", (string)null);
+
+                    b.HasData(
+                        new
+                        {
+                            Id = new Guid("55555555-5555-5555-5555-555555555501"),
+                            Email = "readonly@atlas-supply.local",
+                            NormalizedEmail = "READONLY@ATLAS-SUPPLY.LOCAL",
+                            NormalizedUsername = "READONLY",
+                            PasswordHash = "AQAAAAIAAYagAAAAEC0xelScbohDD1Wy5JYjfcFhomon5G+mKyqcy80ksN2qwkulCTICD301wUF1xterYQ==",
+                            Username = "readonly"
+                        },
+                        new
+                        {
+                            Id = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Email = "operator@atlas-supply.local",
+                            NormalizedEmail = "OPERATOR@ATLAS-SUPPLY.LOCAL",
+                            NormalizedUsername = "OPERATOR",
+                            PasswordHash = "AQAAAAIAAYagAAAAEC0xelScbohDD1Wy5JYjfcFhomon5G+mKyqcy80ksN2qwkulCTICD301wUF1xterYQ==",
+                            Username = "operator"
+                        });
+                });
+
+            modelBuilder.Entity("AtlasSupply.Domain.UserScopeAssignment", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Scope")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("UserId", "Scope");
+
+                    b.ToTable("user_scope_assignments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_user_scope_assignments_Scope", "\"Scope\" IN ('suppliers.list', 'suppliers.read', 'orders.delayed.read', 'incidents.create', 'knowledge.search')");
+                        });
+
+                    b.HasData(
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555501"),
+                            Scope = "suppliers.list"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555501"),
+                            Scope = "suppliers.read"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555501"),
+                            Scope = "orders.delayed.read"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555501"),
+                            Scope = "knowledge.search"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Scope = "suppliers.list"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Scope = "suppliers.read"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Scope = "orders.delayed.read"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Scope = "incidents.create"
+                        },
+                        new
+                        {
+                            UserId = new Guid("55555555-5555-5555-5555-555555555502"),
+                            Scope = "knowledge.search"
+                        });
+                });
+
             modelBuilder.Entity("AtlasSupply.Infrastructure.Persistence.Knowledge.KnowledgeChunk", b =>
                 {
                     b.Property<Guid>("Id")
@@ -502,6 +677,15 @@ namespace AtlasSupply.Infrastructure.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("AtlasSupply.Domain.UserScopeAssignment", b =>
+                {
+                    b.HasOne("AtlasSupply.Domain.User", null)
+                        .WithMany("ScopeAssignments")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AtlasSupply.Infrastructure.Persistence.Knowledge.KnowledgeChunk", b =>
                 {
                     b.HasOne("AtlasSupply.Infrastructure.Persistence.Knowledge.KnowledgeDocument", "Document")
@@ -516,6 +700,11 @@ namespace AtlasSupply.Infrastructure.Migrations
             modelBuilder.Entity("AtlasSupply.Domain.PurchaseOrder", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("AtlasSupply.Domain.User", b =>
+                {
+                    b.Navigation("ScopeAssignments");
                 });
 
             modelBuilder.Entity("AtlasSupply.Infrastructure.Persistence.Knowledge.KnowledgeDocument", b =>
