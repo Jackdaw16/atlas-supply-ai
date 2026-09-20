@@ -42,3 +42,23 @@ output "cloudflare_pages_url" {
   description = "Canonical Cloudflare Pages URL for the project."
   value       = format("https://%s", cloudflare_pages_project.web.subdomain)
 }
+
+output "cloud_run_api_service_name" {
+  description = "Name of the API Cloud Run service."
+  value       = google_cloud_run_v2_service.api.name
+}
+
+output "cloud_run_api_url" {
+  description = "URI of the API Cloud Run service."
+  value       = google_cloud_run_v2_service.api.uri
+}
+
+output "cloud_run_mcp_service_name" {
+  description = "Name of the MCP Cloud Run service."
+  value       = google_cloud_run_v2_service.mcp.name
+}
+
+output "cloud_run_mcp_url" {
+  description = "URI of the MCP Cloud Run service."
+  value       = google_cloud_run_v2_service.mcp.uri
+}
