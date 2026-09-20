@@ -18,6 +18,23 @@ jobs:
   verify-backend:
     name: Restore, build, and test backend
     runs-on: ubuntu-latest
+    env:
+      POSTGRESQL_CONNECTION_STRING: Host=localhost;Port=5432;Database=atlas_supply;Username=atlas;Password=atlas
+      JWT_SIGNING_KEY: ci-only-signing-key-with-at-least-thirty-two-bytes
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: atlas_supply
+          POSTGRES_USER: atlas
+          POSTGRES_PASSWORD: atlas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U atlas -d atlas_supply"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -32,6 +49,14 @@ jobs:
 
       - name: Build solution
         run: dotnet build AtlasSupply.sln --configuration Release --no-restore
+
+      - name: Install EF Core tools
+        run: |
+          dotnet tool install --global dotnet-ef --version 10.0.4
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Apply CI database migrations
+        run: dotnet ef database update --project libs/AtlasSupply.Infrastructure --startup-project apps/api/AtlasSupply.Api --configuration Release --no-build
 
       - name: Test solution
         run: dotnet test AtlasSupply.sln --configuration Release --no-build
