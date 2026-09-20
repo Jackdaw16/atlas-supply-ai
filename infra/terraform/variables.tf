@@ -9,6 +9,25 @@ variable "gcp_project_id" {
   }
 }
 
+variable "gcp_region" {
+  type        = string
+  description = "Primary Google Cloud region for Atlas Supply production resources."
+  default     = "europe-southwest1"
+  nullable    = false
+}
+
+variable "github_repository" {
+  type        = string
+  description = "GitHub owner/repository authorized to federate with Google Cloud."
+  default     = "Jackdaw16/atlas-supply-ai"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/[A-Za-z0-9][A-Za-z0-9_.-]*$", var.github_repository))
+    error_message = "github_repository must be a GitHub owner/repository value."
+  }
+}
+
 variable "cloudflare_account_id" {
   type        = string
   description = "Cloudflare account ID that owns the Pages project."
