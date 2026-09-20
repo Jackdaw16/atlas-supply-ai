@@ -9,10 +9,17 @@ namespace AtlasSupply.Infrastructure.Agents;
 public sealed class McpAgentToolProvider : IAgentToolProvider
 {
     private readonly Uri _endpoint;
+    private readonly IMcpIdTokenProvider _idTokenProvider;
 
     public McpAgentToolProvider(IConfiguration configuration)
+        : this(configuration, new GoogleMcpIdTokenProvider())
+    {
+    }
+
+    public McpAgentToolProvider(IConfiguration configuration, IMcpIdTokenProvider idTokenProvider)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        ArgumentNullException.ThrowIfNull(idTokenProvider);
 
         var endpoint = configuration["Agent:McpEndpoint"];
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var parsedEndpoint) ||
@@ -23,15 +30,17 @@ public sealed class McpAgentToolProvider : IAgentToolProvider
         }
 
         _endpoint = parsedEndpoint;
+        _idTokenProvider = idTokenProvider;
     }
 
     public async Task<IAgentToolSession> OpenSessionAsync(CancellationToken cancellationToken)
     {
+        var httpClient = new HttpClient(new McpCloudRunAuthenticationHandler(_endpoint, _idTokenProvider));
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = _endpoint,
             TransportMode = HttpTransportMode.StreamableHttp
-        });
+        }, httpClient, ownsHttpClient: true);
         var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
         return new McpAgentToolSession(client);
     }

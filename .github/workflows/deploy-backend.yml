@@ -1,0 +1,90 @@
+name: Deploy backend to Cloud Run
+
+on:
+  workflow_run:
+    workflows:
+      - Build backend images
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: Immutable image tag to deploy
+        required: false
+        default: bootstrap
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  deploy-backend:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    name: Migrate and deploy backend
+    runs-on: ubuntu-latest
+    env:
+      IMAGE_TAG: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.image_tag || 'bootstrap' }}
+    steps:
+      - name: Check out deployment source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Restore migration projects
+        run: dotnet restore apps/api/AtlasSupply.Api/AtlasSupply.Api.csproj
+
+      - name: Build migration projects
+        run: dotnet build apps/api/AtlasSupply.Api/AtlasSupply.Api.csproj --configuration Release --no-restore
+
+      - name: Install EF Core tools
+        run: |
+          dotnet tool install --tool-path "$RUNNER_TEMP/dotnet-tools" dotnet-ef --version 10.0.4
+          echo "$RUNNER_TEMP/dotnet-tools" >> "$GITHUB_PATH"
+
+      - name: Apply database migrations
+        env:
+          POSTGRESQL_CONNECTION_STRING: ${{ secrets.NEON_MIGRATION_CONNECTION_STRING }}
+          JWT_SIGNING_KEY: ${{ secrets.JWT_SIGNING_KEY }}
+        run: dotnet ef database update --project libs/AtlasSupply.Infrastructure --startup-project apps/api/AtlasSupply.Api --configuration Release --no-build
+
+      - name: Deploy MCP
+        id: deploy-mcp
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: atlas-supply-mcp
+          image: ghcr.io/jackdaw16/atlas-supply-mcp:${{ env.IMAGE_TAG }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          env_vars_update_strategy: overwrite
+          env_vars: |-
+            POSTGRESQL_CONNECTION_STRING=${{ secrets.NEON_RUNTIME_CONNECTION_STRING }}
+            ASPNETCORE_ENVIRONMENT=Production
+
+      - name: Deploy API
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          service: atlas-supply-api
+          image: ghcr.io/jackdaw16/atlas-supply-api:${{ env.IMAGE_TAG }}
+          region: ${{ vars.GCP_REGION }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          env_vars_update_strategy: overwrite
+          env_vars: |-
+            POSTGRESQL_CONNECTION_STRING=${{ secrets.NEON_RUNTIME_CONNECTION_STRING }}
+            OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+            JWT_SIGNING_KEY=${{ secrets.JWT_SIGNING_KEY }}
+            ASPNETCORE_ENVIRONMENT=Production
+            Agent__McpEndpoint=${{ steps.deploy-mcp.outputs.url }}/mcp

@@ -4,6 +4,7 @@
 **/obj
 .env
 .env.*
+gha-creds-*.json
 **/appsettings.Development.json
 **/secrets.json
 **/*secrets*.json

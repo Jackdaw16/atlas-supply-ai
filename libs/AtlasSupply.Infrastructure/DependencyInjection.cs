@@ -40,6 +40,7 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeChunkSearch, KnowledgeChunkSearch>();
         services.AddScoped<IKnowledgeRetrievalService, SemanticKnowledgeRetrievalService>();
         services.AddScoped<IKnowledgeIngestionService, KnowledgeIngestionService>();
+        services.AddSingleton<IMcpIdTokenProvider, GoogleMcpIdTokenProvider>();
         services.AddScoped<IAgentLanguageModel, OpenAIAgentLanguageModel>();
         services.AddScoped<IAgentToolProvider, McpAgentToolProvider>();
         services.AddScoped<AgentService>(serviceProvider => new AgentService(
