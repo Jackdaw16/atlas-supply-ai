@@ -39,10 +39,12 @@ jobs:
           dotnet-version: 10.0.x
 
       - name: Authenticate to Google Cloud
+        id: auth
         uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
           service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
 
       - name: Restore migration projects
         run: dotnet restore apps/api/AtlasSupply.Api/AtlasSupply.Api.csproj
