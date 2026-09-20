@@ -25,3 +25,14 @@ resource "google_service_account_iam_member" "runtime_service_account_user" {
   role               = "roles/iam.serviceAccountUser"
   member             = "serviceAccount:${google_service_account.github_deploy.email}"
 }
+
+resource "google_service_account_iam_member" "terraform_hcp_runtime_service_account_user" {
+  for_each = {
+    api = google_service_account.api_runtime.name
+    mcp = google_service_account.mcp_runtime.name
+  }
+
+  service_account_id = each.value
+  role               = "roles/iam.serviceAccountUser"
+  member             = "serviceAccount:${var.terraform_hcp_service_account_email}"
+}

@@ -16,10 +16,17 @@ variable "gcp_region" {
   nullable    = false
 }
 
+variable "terraform_hcp_service_account_email" {
+  type        = string
+  description = "Email of the Google service account impersonated by HCP Terraform during Terraform runs."
+  nullable    = false
+}
+
 variable "cloud_run_api_image" {
   type        = string
   description = "Container image URI deployed to the API Cloud Run service."
   nullable    = false
+  default     = "us-docker.pkg.dev/cloudrun/container/hello:latest"
 
   validation {
     condition     = trimspace(var.cloud_run_api_image) != ""
@@ -31,6 +38,7 @@ variable "cloud_run_mcp_image" {
   type        = string
   description = "Container image URI deployed to the MCP Cloud Run service."
   nullable    = false
+  default     = "us-docker.pkg.dev/cloudrun/container/hello:latest"
 
   validation {
     condition     = trimspace(var.cloud_run_mcp_image) != ""
