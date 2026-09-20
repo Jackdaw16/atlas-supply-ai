@@ -7,7 +7,11 @@
     [class.shadow-sky-950/40]="message().role === 'user'"
     [class.bg-[#172235]]="isAssistant()"
     [class.text-slate-100]="isAssistant()">
-    <p class="m-0 whitespace-pre-wrap">{{ message().content }}</p>
+    @if (isAssistant()) {
+      <div class="markdown-content" [innerHTML]="renderedAssistantContent()"></div>
+    } @else {
+      <p class="m-0 whitespace-pre-wrap">{{ message().content }}</p>
+    }
 
     @if (message().toolsUsed?.length) {
       <div class="mt-4 border-t border-slate-700/70 pt-3">
