@@ -16,6 +16,28 @@ variable "gcp_region" {
   nullable    = false
 }
 
+variable "cloud_run_api_image" {
+  type        = string
+  description = "Container image URI deployed to the API Cloud Run service."
+  nullable    = false
+
+  validation {
+    condition     = trimspace(var.cloud_run_api_image) != ""
+    error_message = "cloud_run_api_image must not be blank."
+  }
+}
+
+variable "cloud_run_mcp_image" {
+  type        = string
+  description = "Container image URI deployed to the MCP Cloud Run service."
+  nullable    = false
+
+  validation {
+    condition     = trimspace(var.cloud_run_mcp_image) != ""
+    error_message = "cloud_run_mcp_image must not be blank."
+  }
+}
+
 variable "github_repository" {
   type        = string
   description = "GitHub owner/repository authorized to federate with Google Cloud."
