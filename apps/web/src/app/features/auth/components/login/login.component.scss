@@ -83,6 +83,16 @@
   font-weight: 700;
 }
 
+.sign-in-button ::ng-deep .mdc-button__label mat-icon {
+  display: inline-flex;
+  width: 1rem;
+  height: 1rem;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  line-height: 1;
+}
+
 .demo-access-cta {
   display: flex;
   flex-wrap: wrap;
