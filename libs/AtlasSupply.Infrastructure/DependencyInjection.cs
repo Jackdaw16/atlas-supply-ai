@@ -41,6 +41,12 @@ public static class DependencyInjection
         services.AddScoped<IKnowledgeRetrievalService, SemanticKnowledgeRetrievalService>();
         services.AddScoped<IKnowledgeIngestionService, KnowledgeIngestionService>();
         services.AddSingleton<IMcpIdTokenProvider, GoogleMcpIdTokenProvider>();
+        services.AddTransient<McpCloudRunAuthenticationHandler>(serviceProvider =>
+            new McpCloudRunAuthenticationHandler(
+                McpAgentToolProvider.ParseEndpoint(configuration),
+                serviceProvider.GetRequiredService<IMcpIdTokenProvider>()));
+        services.AddHttpClient(McpAgentToolProvider.HttpClientName)
+            .AddHttpMessageHandler<McpCloudRunAuthenticationHandler>();
         services.AddScoped<IAgentLanguageModel, OpenAIAgentLanguageModel>();
         services.AddScoped<IAgentToolProvider, McpAgentToolProvider>();
         services.AddScoped<AgentService>(serviceProvider => new AgentService(

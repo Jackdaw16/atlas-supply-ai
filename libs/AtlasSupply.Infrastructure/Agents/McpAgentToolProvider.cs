@@ -8,19 +8,34 @@ namespace AtlasSupply.Infrastructure.Agents;
 
 public sealed class McpAgentToolProvider : IAgentToolProvider
 {
+    public const string HttpClientName = "AtlasSupply.Mcp";
+
     private readonly Uri _endpoint;
-    private readonly IMcpIdTokenProvider _idTokenProvider;
+    private readonly IHttpClientFactory _httpClientFactory;
 
-    public McpAgentToolProvider(IConfiguration configuration)
-        : this(configuration, new GoogleMcpIdTokenProvider())
-    {
-    }
-
-    public McpAgentToolProvider(IConfiguration configuration, IMcpIdTokenProvider idTokenProvider)
+    public McpAgentToolProvider(IConfiguration configuration, IHttpClientFactory httpClientFactory)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        ArgumentNullException.ThrowIfNull(idTokenProvider);
+        ArgumentNullException.ThrowIfNull(httpClientFactory);
 
+        _endpoint = ParseEndpoint(configuration);
+        _httpClientFactory = httpClientFactory;
+    }
+
+    public async Task<IAgentToolSession> OpenSessionAsync(CancellationToken cancellationToken)
+    {
+        var httpClient = _httpClientFactory.CreateClient(HttpClientName);
+        var transport = new HttpClientTransport(new HttpClientTransportOptions
+        {
+            Endpoint = _endpoint,
+            TransportMode = HttpTransportMode.StreamableHttp
+        }, httpClient, ownsHttpClient: true);
+        var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
+        return new McpAgentToolSession(client);
+    }
+
+    internal static Uri ParseEndpoint(IConfiguration configuration)
+    {
         var endpoint = configuration["Agent:McpEndpoint"];
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var parsedEndpoint) ||
             !parsedEndpoint.AbsolutePath.EndsWith("/mcp", StringComparison.Ordinal))
@@ -29,20 +44,7 @@ public sealed class McpAgentToolProvider : IAgentToolProvider
                 "Agent MCP endpoint is missing or invalid. Configure Agent:McpEndpoint as a full URL ending in /mcp.");
         }
 
-        _endpoint = parsedEndpoint;
-        _idTokenProvider = idTokenProvider;
-    }
-
-    public async Task<IAgentToolSession> OpenSessionAsync(CancellationToken cancellationToken)
-    {
-        var httpClient = new HttpClient(new McpCloudRunAuthenticationHandler(_endpoint, _idTokenProvider));
-        var transport = new HttpClientTransport(new HttpClientTransportOptions
-        {
-            Endpoint = _endpoint,
-            TransportMode = HttpTransportMode.StreamableHttp
-        }, httpClient, ownsHttpClient: true);
-        var client = await McpClient.CreateAsync(transport, cancellationToken: cancellationToken);
-        return new McpAgentToolSession(client);
+        return parsedEndpoint;
     }
 
     private sealed class McpAgentToolSession(McpClient client) : IAgentToolSession
