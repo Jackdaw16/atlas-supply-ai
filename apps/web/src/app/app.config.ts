@@ -4,6 +4,7 @@ import { provideAnimationsAsync } from '@angular/platform-browser/animations/asy
 import { provideRouter } from '@angular/router';
 import { routes } from './app.routes';
 import { CHAT_API_CONFIG } from './core/services/chat-api.config';
+import { DEMO_CONTACT_CONFIG } from './core/config/demo-contact.config';
 import { authInterceptor } from './core/auth/auth.interceptor';
 
 declare const API_BASE_URL: string | undefined;
@@ -17,6 +18,7 @@ export const appConfig: ApplicationConfig = {
     provideRouter(routes),
     provideAnimationsAsync(),
     provideHttpClient(withInterceptors([authInterceptor])),
-    { provide: CHAT_API_CONFIG, useValue: { baseUrl: apiBaseUrl } }
+    { provide: CHAT_API_CONFIG, useValue: { baseUrl: apiBaseUrl } },
+    { provide: DEMO_CONTACT_CONFIG, useValue: { demoContactEmail: 'demo@atlassupply.ai' } }
   ]
 };

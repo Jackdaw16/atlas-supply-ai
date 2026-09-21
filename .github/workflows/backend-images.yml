@@ -4,6 +4,18 @@ on:
   push:
     branches:
       - main
+    paths:
+      - apps/api/**
+      - apps/mcp/**
+      - apps/tools/**
+      - libs/**
+      - tests/**
+      - .dockerignore
+      - .editorconfig
+      - AtlasSupply.sln
+      - Directory.Build.props
+      - .github/workflows/backend-images.yml
+      - .github/workflows/deploy-backend.yml
   workflow_dispatch:
 
 permissions:
