@@ -14,5 +14,6 @@
   <ItemGroup>
     <ProjectReference Include="..\..\libs\AtlasSupply.Application\AtlasSupply.Application.csproj" />
     <ProjectReference Include="..\..\libs\AtlasSupply.Infrastructure\AtlasSupply.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\apps\tools\AtlasSupply.KnowledgeIngestor\AtlasSupply.KnowledgeIngestor.csproj" />
   </ItemGroup>
 </Project>

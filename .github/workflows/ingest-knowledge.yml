@@ -1,0 +1,43 @@
+name: Ingest production knowledge
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ingest-knowledge:
+    name: Ingest production knowledge documents
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore ingestion tool
+        run: dotnet restore apps/tools/AtlasSupply.KnowledgeIngestor/AtlasSupply.KnowledgeIngestor.csproj
+
+      - name: Build ingestion tool
+        run: dotnet build apps/tools/AtlasSupply.KnowledgeIngestor/AtlasSupply.KnowledgeIngestor.csproj --configuration Release --no-restore
+
+      - name: Ingest knowledge documents
+        env:
+          POSTGRESQL_CONNECTION_STRING: ${{ secrets.NEON_MIGRATION_CONNECTION_STRING }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          : "${POSTGRESQL_CONNECTION_STRING:?NEON_MIGRATION_CONNECTION_STRING must be configured.}"
+          : "${OPENAI_API_KEY:?OPENAI_API_KEY must be configured.}"
+          if [ ! -d docs/knowledge ]; then
+            echo "Knowledge source directory docs/knowledge was not found." >&2
+            exit 1
+          fi
+          if ! find docs/knowledge -maxdepth 1 -type f -name '*.md' -print -quit | grep -q .; then
+            echo "No Markdown knowledge documents were found in docs/knowledge." >&2
+            exit 1
+          fi
+          dotnet run --project apps/tools/AtlasSupply.KnowledgeIngestor/AtlasSupply.KnowledgeIngestor.csproj --configuration Release --no-build -- --knowledge-directory docs/knowledge
