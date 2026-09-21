@@ -38,6 +38,7 @@ jobs:
         working-directory: apps/web
         env:
           API_BASE_URL: ${{ vars.API_BASE_URL }}
+          DEMO_CONTACT_CONFIG: ${{ vars.DEMO_CONTACT_CONFIG }}
         run: |
           : "${API_BASE_URL:?Set the API_BASE_URL repository variable before deployment.}"
           npm run build -- --configuration production --define "API_BASE_URL='${API_BASE_URL}'"

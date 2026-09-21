@@ -7,6 +7,19 @@ import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { Router } from '@angular/router';
 import { AuthService } from '../../../../core/auth/auth.service';
+import { DEMO_CONTACT_CONFIG } from '../../../../core/config/demo-contact.config';
+
+const demoRequestSubject = 'Solicitud de acceso a Atlas Supply AI';
+const demoRequestBody = `Hola,
+
+Me gustaría solicitar acceso a la demo de Atlas Supply AI.
+
+Nombre:
+Empresa:
+Cargo:
+Motivo de la solicitud:
+
+Gracias.`;
 
 @Component({
   selector: 'app-login',
@@ -25,9 +38,11 @@ import { AuthService } from '../../../../core/auth/auth.service';
 export class LoginComponent {
   private readonly authService = inject(AuthService);
   private readonly router = inject(Router);
+  private readonly demoContactConfig = inject(DEMO_CONTACT_CONFIG);
 
   protected username = '';
   protected password = '';
+  protected readonly demoRequestMailto = `mailto:${this.demoContactConfig.demoContactEmail}?subject=${encodeURIComponent(demoRequestSubject)}&body=${encodeURIComponent(demoRequestBody)}`;
   protected readonly isPasswordVisible = signal(false);
   protected readonly isSubmitting = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
