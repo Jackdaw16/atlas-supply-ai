@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
+using AtlasSupply.Infrastructure;
 using AtlasSupply.Infrastructure.Agents;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AtlasSupply.Security.Tests;
@@ -81,6 +84,37 @@ public sealed class McpCloudRunAuthenticationTests
         Assert.Equal("http://127.0.0.1:5001/mcp", innerHandler.RequestUri);
         Assert.Equal("{\"method\":\"tools/list\"}", innerHandler.Content);
         Assert.Null(innerHandler.Authorization);
+    }
+
+    [Fact]
+    public async Task ConfiguredMcpClient_TraversesAuthenticationHandlerAndPrimaryHandler()
+    {
+        var tokenProvider = new RecordingTokenProvider("cloud-run-id-token");
+        var primaryHandler = new RecordingHandler();
+        var endpoint = new Uri("https://atlas-supply-mcp-abc-ew.a.run.app/mcp");
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Agent:McpEndpoint"] = endpoint.ToString(),
+                ["ConnectionStrings:PostgreSQL"] = "Host=localhost;Database=atlas_supply;Username=test;Password=test"
+            })
+            .Build();
+        var services = new ServiceCollection();
+        services.AddInfrastructure(configuration);
+        services.AddSingleton<IMcpIdTokenProvider>(tokenProvider);
+        services.AddHttpClient(McpAgentToolProvider.HttpClientName)
+            .ConfigurePrimaryHttpMessageHandler(() => primaryHandler);
+
+        using var serviceProvider = services.BuildServiceProvider();
+        using var client = serviceProvider
+            .GetRequiredService<IHttpClientFactory>()
+            .CreateClient(McpAgentToolProvider.HttpClientName);
+        using var response = await client.PostAsync(endpoint, new StringContent("{}", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("https://atlas-supply-mcp-abc-ew.a.run.app", tokenProvider.Audience);
+        Assert.Equal(new AuthenticationHeaderValue("Bearer", "cloud-run-id-token"), primaryHandler.Authorization);
+        Assert.Equal(1, primaryHandler.RequestCount);
     }
 
     private static HttpClient CreateClient(
