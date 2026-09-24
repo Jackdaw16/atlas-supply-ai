@@ -51,6 +51,36 @@ public sealed record AgentLanguageModelResponse(
     string Content,
     IReadOnlyList<AgentToolCall> ToolCalls);
 
+public static class AgentRoute
+{
+    public const string General = "general";
+}
+
+public sealed record AgentRoutingRequest(
+    string Message,
+    IReadOnlyList<string> AvailableTools);
+
+public sealed record AgentRoutingTelemetry(
+    string? Provider,
+    string? Model,
+    int? InputTokens,
+    int? OutputTokens,
+    decimal? EstimatedCostUsd,
+    long ElapsedMilliseconds);
+
+public sealed record AgentRoutingDecision(
+    string SelectedRoute,
+    decimal SelectedProbability,
+    IReadOnlyDictionary<string, decimal> ProbabilityDistribution,
+    AgentRoutingTelemetry Telemetry);
+
+public interface IAgentRouter
+{
+    Task<AgentRoutingDecision> RouteAsync(
+        AgentRoutingRequest request,
+        CancellationToken cancellationToken);
+}
+
 public interface IAgentLanguageModel
 {
     Task<AgentLanguageModelResponse> CompleteAsync(

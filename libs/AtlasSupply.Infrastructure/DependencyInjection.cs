@@ -49,6 +49,9 @@ public static class DependencyInjection
             .AddHttpMessageHandler<McpCloudRunAuthenticationHandler>();
         services.AddScoped<IAgentLanguageModel, OpenAIAgentLanguageModel>();
         services.AddScoped<IAgentToolProvider, McpAgentToolProvider>();
+        services.AddHttpClient(JevAgentRouter.HttpClientName, client =>
+            client.BaseAddress = ResolveAgentRoutingGatewayBaseUrl(configuration));
+        services.AddScoped<IAgentRouter, JevAgentRouter>();
         services.AddScoped<AgentService>(serviceProvider => new AgentService(
             serviceProvider.GetRequiredService<IAgentLanguageModel>(),
             serviceProvider.GetRequiredService<IAgentToolProvider>(),
@@ -92,5 +95,22 @@ public static class DependencyInjection
         }
 
         return maximumToolRounds;
+    }
+
+    private static Uri ResolveAgentRoutingGatewayBaseUrl(IConfiguration configuration)
+    {
+        var configuredUrl = configuration["AgentRouting:GatewayBaseUrl"];
+        if (string.IsNullOrWhiteSpace(configuredUrl))
+        {
+            return new Uri("https://ai-gateway.vercel.sh/");
+        }
+
+        if (!Uri.TryCreate(configuredUrl, UriKind.Absolute, out var baseUrl))
+        {
+            throw new InvalidOperationException(
+                "AgentRouting:GatewayBaseUrl must be an absolute URL.");
+        }
+
+        return baseUrl;
     }
 }
