@@ -59,7 +59,10 @@ public static class DependencyInjection
             serviceProvider.GetRequiredService<IAgentToolAuditWriter>(),
             serviceProvider.GetRequiredService<TimeProvider>(),
             serviceProvider.GetRequiredService<ILogger<AgentService>>(),
-            new AgentServiceOptions(ParseMaximumToolRounds(configuration))));
+            new AgentServiceOptions(
+                ParseMaximumToolRounds(configuration),
+                ParseExperimentalJevShadowRouting(configuration)),
+            serviceProvider.GetRequiredService<IAgentRouter>()));
         services.Configure<KnowledgeIngestionOptions>(options =>
             options.SourceDirectory = configuration["Knowledge:SourceDirectory"] ?? "docs/knowledge");
 
@@ -95,6 +98,17 @@ public static class DependencyInjection
         }
 
         return maximumToolRounds;
+    }
+
+    private static bool ParseExperimentalJevShadowRouting(IConfiguration configuration)
+    {
+        var configuredValue = configuration["Agent:ExperimentalJevShadowRouting"];
+        if (string.IsNullOrWhiteSpace(configuredValue))
+        {
+            return false;
+        }
+
+        return bool.TryParse(configuredValue, out var enabled) && enabled;
     }
 
     private static Uri ResolveAgentRoutingGatewayBaseUrl(IConfiguration configuration)

@@ -17,6 +17,7 @@ public sealed class JevAgentRouter(
     public const string HttpClientName = "AtlasSupply.JevRouting";
 
     private const string DefaultModel = "typesafe-ai/jev";
+    private const int MaximumProviderResponseBodyLength = 1_000;
 
     public async Task<AgentRoutingDecision> RouteAsync(
         AgentRoutingRequest request,
@@ -41,23 +42,36 @@ public sealed class JevAgentRouter(
         message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         var client = httpClientFactory.CreateClient(HttpClientName);
-        using var response = await client.SendAsync(message, cancellationToken);
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            throw new InvalidOperationException(
-                $"AI Gateway evaluation failed with HTTP status {(int)response.StatusCode}.");
+            using var response = await client.SendAsync(message, cancellationToken);
+            var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new AgentRoutingProviderException(
+                    (int)response.StatusCode,
+                    response.ReasonPhrase,
+                    TruncateProviderResponseBody(responseContent));
+            }
+
+            stopwatch.Stop();
+
+            var decision = ParseDecision(responseContent, validatedRequest.Criteria, stopwatch.ElapsedMilliseconds);
+            logger.LogInformation(
+                "Jev agent router selected route {SelectedRoute} with probability {SelectedProbability} in {ElapsedMilliseconds} ms.",
+                decision.SelectedRoute,
+                decision.SelectedProbability,
+                decision.Telemetry.ElapsedMilliseconds);
+            return decision;
         }
-
-        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
-        stopwatch.Stop();
-
-        var decision = ParseDecision(responseContent, validatedRequest.Criteria, stopwatch.ElapsedMilliseconds);
-        logger.LogInformation(
-            "Jev agent router selected route {SelectedRoute} with probability {SelectedProbability} in {ElapsedMilliseconds} ms.",
-            decision.SelectedRoute,
-            decision.SelectedProbability,
-            decision.Telemetry.ElapsedMilliseconds);
-        return decision;
+        catch (HttpRequestException exception)
+        {
+            throw new AgentRoutingProviderException(
+                statusCode: null,
+                reasonPhrase: null,
+                responseBody: null,
+                new HttpRequestException("Agent routing provider transport request failed.", exception));
+        }
     }
 
     private string GetModel() => configuration["AgentRouting:Model"]?.Trim() switch
@@ -109,28 +123,25 @@ public sealed class JevAgentRouter(
     private static object CreateEvaluationRequest(ValidatedRoutingRequest request, string model) => new
     {
         model,
-        input = request.Message,
-        questions = new[]
+        state = request.Message,
+        questions = new Dictionary<string, object>
         {
-            new
+            ["route"] = new
             {
-                name = "route",
                 type = "choice",
-                question = "Which route should handle this user message?",
-                criteria = request.AvailableCriteria.Select(name => new
-                {
-                    name,
-                    description = name == AgentRoute.General
+                instructions = "Which route should handle this user message?",
+                criteria = request.AvailableCriteria.ToDictionary(
+                    name => name,
+                    name => name == AgentRoute.General
                         ? "Handle the message without a submitted tool."
-                        : $"Route the message to the submitted tool '{name}'."
-                })
+                        : $"Route the message to the submitted tool '{name}'.",
+                    StringComparer.Ordinal)
             }
         },
         providerOptions = new
         {
             gateway = new
             {
-                zeroDataRetention = true,
                 only = new[] { "typesafe-ai" }
             }
         }
@@ -147,7 +158,7 @@ public sealed class JevAgentRouter(
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
-                throw MalformedResponse("the root must be a JSON object");
+                throw MalformedResponse("response", "must be a JSON object");
             }
 
             var routeAnswer = GetRequiredObject(root, "answers", "answers");
@@ -155,7 +166,7 @@ public sealed class JevAgentRouter(
             var selectedRoute = GetRequiredString(routeAnswer, "choice", "answers.route.choice");
             if (!criteria.Contains(selectedRoute))
             {
-                throw MalformedResponse("answers.route.choice is not an available route");
+                throw MalformedResponse("answers.route.choice", "is not an available route");
             }
 
             var probabilitiesElement = GetRequiredObject(
@@ -165,22 +176,27 @@ public sealed class JevAgentRouter(
             var probabilities = ParseProbabilities(probabilitiesElement);
             if (!probabilities.TryGetValue(selectedRoute, out var selectedProbability))
             {
-                throw MalformedResponse("answers.route.probabilities does not include the selected route");
+                throw MalformedResponse("answers.route.probabilities", "does not include the selected route");
             }
 
+            var providerMetadata = GetOptionalObject(root, "providerMetadata", "providerMetadata");
+            var gatewayMetadata = providerMetadata.HasValue
+                ? GetOptionalObject(providerMetadata.Value, "gateway", "providerMetadata.gateway")
+                : null;
+
             var telemetry = new AgentRoutingTelemetry(
-                GetOptionalString(GetOptionalObject(root, "providerMetadata")?.GetPropertyOrNull("gateway"), "provider"),
-                GetOptionalString(root, "model"),
-                GetOptionalNonNegativeInt(GetOptionalObject(root, "usage"), "inputTokens"),
-                GetOptionalNonNegativeInt(GetOptionalObject(root, "usage"), "outputTokens"),
-                GetOptionalCost(root),
+                GetOptionalString(gatewayMetadata, "provider", "providerMetadata.gateway.provider"),
+                GetOptionalString(root, "model", "model"),
+                GetOptionalNonNegativeInt(GetOptionalObject(root, "usage", "usage"), "inputTokens"),
+                GetOptionalNonNegativeInt(GetOptionalObject(root, "usage", "usage"), "outputTokens"),
+                GetOptionalCost(gatewayMetadata),
                 elapsedMilliseconds);
 
             return new AgentRoutingDecision(selectedRoute, selectedProbability, probabilities, telemetry);
         }
         catch (JsonException exception)
         {
-            throw new InvalidOperationException("AI Gateway evaluation returned malformed JSON.", exception);
+            throw MalformedResponse("response", "is not valid JSON", exception);
         }
     }
 
@@ -194,16 +210,15 @@ public sealed class JevAgentRouter(
                 value is < 0 or > 1 ||
                 !probabilities.TryAdd(probability.Name, value))
             {
-                throw MalformedResponse("answers.route.probabilities contains an invalid probability");
+                throw MalformedResponse("answers.route.probabilities", "contains an invalid probability");
             }
         }
 
         return probabilities;
     }
 
-    private static decimal? GetOptionalCost(JsonElement root)
+    private static decimal? GetOptionalCost(JsonElement? gatewayMetadata)
     {
-        var gatewayMetadata = GetOptionalObject(root, "providerMetadata")?.GetPropertyOrNull("gateway");
         if (gatewayMetadata is null || !gatewayMetadata.Value.TryGetProperty("cost", out var cost))
         {
             return null;
@@ -211,7 +226,7 @@ public sealed class JevAgentRouter(
 
         if (!TryGetDecimal(cost, out var parsedCost) || parsedCost < 0)
         {
-            throw MalformedResponse("providerMetadata.gateway.cost is invalid");
+            throw MalformedResponse("providerMetadata.gateway.cost", "is invalid");
         }
 
         return parsedCost;
@@ -221,37 +236,43 @@ public sealed class JevAgentRouter(
     {
         if (!parent.TryGetProperty(propertyName, out var value) || value.ValueKind != JsonValueKind.Object)
         {
-            throw MalformedResponse($"{path} must be a JSON object");
+            throw MalformedResponse(path, "must be a JSON object");
         }
 
         return value;
     }
 
-    private static JsonElement? GetOptionalObject(JsonElement parent, string propertyName)
+    private static JsonElement? GetOptionalObject(JsonElement parent, string propertyName, string path)
     {
-        return parent.TryGetProperty(propertyName, out var value) && value.ValueKind == JsonValueKind.Object
-            ? value
-            : null;
-    }
-
-    private static string GetRequiredString(JsonElement parent, string propertyName, string path)
-    {
-        var value = GetOptionalString(parent, propertyName);
-        return !string.IsNullOrWhiteSpace(value)
-            ? value
-            : throw MalformedResponse($"{path} must be a non-empty string");
-    }
-
-    private static string? GetOptionalString(JsonElement? parent, string propertyName)
-    {
-        if (parent is not { ValueKind: JsonValueKind.Object } ||
-            !parent.Value.TryGetProperty(propertyName, out var value) ||
-            value.ValueKind != JsonValueKind.String)
+        if (!parent.TryGetProperty(propertyName, out var value))
         {
             return null;
         }
 
-        return value.GetString();
+        return value.ValueKind == JsonValueKind.Object
+            ? value
+            : throw MalformedResponse(path, "must be a JSON object");
+    }
+
+    private static string GetRequiredString(JsonElement parent, string propertyName, string path)
+    {
+        var value = GetOptionalString(parent, propertyName, path);
+        return !string.IsNullOrWhiteSpace(value)
+            ? value
+            : throw MalformedResponse(path, "must be a non-empty string");
+    }
+
+    private static string? GetOptionalString(JsonElement? parent, string propertyName, string path)
+    {
+        if (parent is not { ValueKind: JsonValueKind.Object } ||
+            !parent.Value.TryGetProperty(propertyName, out var value))
+        {
+            return null;
+        }
+
+        return value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : throw MalformedResponse(path, "must be a string");
     }
 
     private static int? GetOptionalNonNegativeInt(JsonElement? parent, string propertyName)
@@ -263,7 +284,7 @@ public sealed class JevAgentRouter(
 
         if (!value.TryGetInt32(out var parsedValue) || parsedValue < 0)
         {
-            throw MalformedResponse($"usage.{propertyName} is invalid");
+            throw MalformedResponse($"usage.{propertyName}", "is invalid");
         }
 
         return parsedValue;
@@ -285,22 +306,19 @@ public sealed class JevAgentRouter(
             out parsedValue);
     }
 
-    private static InvalidOperationException MalformedResponse(string detail) =>
-        new($"AI Gateway evaluation returned a malformed response: {detail}.");
+    private static string? TruncateProviderResponseBody(string responseBody) =>
+        responseBody.Length <= MaximumProviderResponseBodyLength
+            ? responseBody
+            : responseBody[..MaximumProviderResponseBodyLength];
+
+    private static AgentRoutingResponseException MalformedResponse(
+        string fieldPath,
+        string detail,
+        Exception? innerException = null) =>
+        new(fieldPath, detail, innerException);
 
     private sealed record ValidatedRoutingRequest(string Message, IReadOnlyList<string> AvailableCriteria)
     {
         public IReadOnlySet<string> Criteria { get; } = new HashSet<string>(AvailableCriteria, StringComparer.Ordinal);
-    }
-}
-
-internal static class JsonElementExtensions
-{
-    public static JsonElement? GetPropertyOrNull(this JsonElement value, string propertyName)
-    {
-        return value.ValueKind == JsonValueKind.Object &&
-            value.TryGetProperty(propertyName, out var property)
-            ? property
-            : null;
     }
 }

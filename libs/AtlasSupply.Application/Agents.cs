@@ -74,6 +74,48 @@ public sealed record AgentRoutingDecision(
     IReadOnlyDictionary<string, decimal> ProbabilityDistribution,
     AgentRoutingTelemetry Telemetry);
 
+public sealed class AgentRoutingProviderException(
+    int? statusCode,
+    string? reasonPhrase,
+    string? responseBody,
+    Exception? innerException = null) : Exception(CreateMessage(statusCode, reasonPhrase), innerException)
+{
+    public int? StatusCode { get; } = statusCode;
+
+    public string? ReasonPhrase { get; } = reasonPhrase;
+
+    public string? ResponseBody { get; } = responseBody;
+
+    private static string CreateMessage(int? statusCode, string? reasonPhrase)
+    {
+        if (statusCode is null)
+        {
+            return "Agent routing provider request failed.";
+        }
+
+        return string.IsNullOrWhiteSpace(reasonPhrase)
+            ? $"Agent routing provider returned status {statusCode}."
+            : $"Agent routing provider returned status {statusCode} ({reasonPhrase}).";
+    }
+}
+
+public sealed class AgentRoutingResponseException(
+    string fieldPath,
+    string detail,
+    Exception? innerException = null) : Exception(
+        $"Agent routing response validation failed at '{fieldPath}': {detail}.",
+        innerException)
+{
+    public string FieldPath { get; } = fieldPath;
+}
+
+public sealed record AgentRoutingShadowComparison(
+    AgentRoutingDecision RoutingDecision,
+    string? LanguageModelRoute,
+    IReadOnlyList<string> LanguageModelToolNames,
+    bool Comparable,
+    bool? Matched);
+
 public interface IAgentRouter
 {
     Task<AgentRoutingDecision> RouteAsync(
@@ -102,7 +144,9 @@ public interface IAgentToolSession : IAsyncDisposable
         CancellationToken cancellationToken);
 }
 
-public sealed record AgentServiceOptions(int MaximumToolRounds = 4);
+public sealed record AgentServiceOptions(
+    int MaximumToolRounds = 4,
+    bool ExperimentalJevShadowRouting = false);
 
 public sealed class AgentService(
     IAgentLanguageModel languageModel,
@@ -111,10 +155,26 @@ public sealed class AgentService(
     IAgentToolAuditWriter auditWriter,
     TimeProvider timeProvider,
     ILogger<AgentService> logger,
-    AgentServiceOptions? options = null)
+    AgentServiceOptions? options = null,
+    IAgentRouter? agentRouter = null)
 {
     private const int MaximumMessageLength = 4_000;
     private const int MaximumToolCallsPerCompletion = 8;
+    private const int MaximumProviderReasonPhraseLength = 160;
+    private const int MaximumProviderResponseExcerptLength = 400;
+    private static readonly string[] CredentialMarkers =
+    [
+        "authorization",
+        "apikey",
+        "token",
+        "secret",
+        "password",
+        "credential"
+    ];
+    private static readonly EventId AgentRoutingShadowComparisonEventId =
+        new(1, "AgentRoutingShadowComparison");
+    private static readonly EventId AgentRoutingShadowFailureEventId =
+        new(2, "AgentRoutingShadowFailure");
 
     public const string SystemInstructions =
         "Use RAG for Atlas Supply policies and procedures. Use MCP for live transactional data and actions. Never invent suppliers, orders, incidents, or company policies. Use tools rather than assumptions when authoritative data exists.";
@@ -143,6 +203,11 @@ public sealed class AgentService(
             var completion = await languageModel.CompleteAsync(
                 new AgentLanguageModelRequest(systemInstructions, messages, tools),
                 cancellationToken);
+
+            if (toolRounds == 0)
+            {
+                await CompareInitialRoutingAsync(message, tools, completion, cancellationToken);
+            }
 
             if (completion.ToolCalls.Count == 0)
             {
@@ -235,6 +300,220 @@ public sealed class AgentService(
 
             toolRounds++;
         }
+    }
+
+    private async Task CompareInitialRoutingAsync(
+        string message,
+        IReadOnlyList<AgentToolDefinition> tools,
+        AgentLanguageModelResponse completion,
+        CancellationToken cancellationToken)
+    {
+        if (!_options.ExperimentalJevShadowRouting || tools.Count == 0 || agentRouter is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var decision = await agentRouter.RouteAsync(
+                new AgentRoutingRequest(message, tools.Select(static tool => tool.Name).ToArray()),
+                cancellationToken);
+            var comparison = CreateRoutingShadowComparison(decision, completion);
+
+            logger.LogInformation(
+                AgentRoutingShadowComparisonEventId,
+                "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Matched={Matched} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
+                comparison.RoutingDecision.SelectedRoute,
+                comparison.RoutingDecision.SelectedProbability,
+                comparison.LanguageModelRoute,
+                comparison.LanguageModelToolNames,
+                comparison.Comparable,
+                comparison.Matched,
+                comparison.RoutingDecision.Telemetry.ElapsedMilliseconds,
+                comparison.RoutingDecision.Telemetry.EstimatedCostUsd,
+                comparison.RoutingDecision.ProbabilityDistribution,
+                comparison.LanguageModelToolNames.Count,
+                comparison.RoutingDecision.Telemetry.InputTokens,
+                comparison.RoutingDecision.Telemetry.OutputTokens);
+        }
+        catch (Exception exception)
+        {
+            var innerException = exception.InnerException;
+            var providerFailure = GetProviderFailureDetails(exception, message);
+            logger.LogWarning(
+                AgentRoutingShadowFailureEventId,
+                "Agent routing shadow comparison failed {ShadowFailureType} {ExceptionType} {ExceptionMessage} {InnerExceptionType} {InnerExceptionMessage} {ProviderFailureKind} {ProviderStatusCode} {ProviderReasonPhrase} {ProviderResponseExcerpt}",
+                GetShadowFailureType(exception),
+                exception.GetType().Name,
+                SanitizeProviderText(exception.Message, message, MaximumProviderReasonPhraseLength),
+                innerException?.GetType().Name,
+                SanitizeProviderText(innerException?.Message, message, MaximumProviderReasonPhraseLength),
+                providerFailure.Kind,
+                providerFailure.StatusCode,
+                providerFailure.ReasonPhrase,
+                providerFailure.ResponseExcerpt);
+        }
+    }
+
+    private static string GetShadowFailureType(Exception exception) => exception switch
+    {
+        AgentRoutingProviderException => "ProviderFailure",
+        AgentRoutingResponseException => "ResponseValidationFailure",
+        ArgumentException => "RequestValidationFailure",
+        _ => "UnknownFailure"
+    };
+
+    private static ProviderFailureDetails GetProviderFailureDetails(Exception exception, string userMessage)
+    {
+        if (exception is not AgentRoutingProviderException providerException)
+        {
+            return new ProviderFailureDetails(null, null, null, null);
+        }
+
+        return new ProviderFailureDetails(
+            providerException.StatusCode is null ? "Transport" : "HttpResponse",
+            providerException.StatusCode,
+            SanitizeProviderText(
+                providerException.ReasonPhrase,
+                userMessage,
+                MaximumProviderReasonPhraseLength),
+            CreateProviderResponseExcerpt(providerException.ResponseBody, userMessage));
+    }
+
+    private static string? CreateProviderResponseExcerpt(string? responseBody, string userMessage)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object ||
+                !root.TryGetProperty("error", out var error))
+            {
+                return null;
+            }
+
+            var fields = new SortedDictionary<string, string>(StringComparer.Ordinal);
+            if (error.ValueKind == JsonValueKind.String)
+            {
+                AddSafeErrorField(fields, "message", error.GetString(), userMessage);
+            }
+            else if (error.ValueKind == JsonValueKind.Object)
+            {
+                AddSafeErrorField(error, fields, "message", userMessage);
+                AddSafeErrorField(error, fields, "code", userMessage);
+                AddSafeErrorField(error, fields, "type", userMessage);
+            }
+            else
+            {
+                return null;
+            }
+
+            if (fields.Count == 0)
+            {
+                return null;
+            }
+
+            return SanitizeProviderText(
+                JsonSerializer.Serialize(fields),
+                userMessage,
+                MaximumProviderResponseExcerptLength);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static void AddSafeErrorField(
+        JsonElement error,
+        SortedDictionary<string, string> fields,
+        string name,
+        string userMessage)
+    {
+        if (!error.TryGetProperty(name, out var value))
+        {
+            return;
+        }
+
+        var text = value.ValueKind switch
+        {
+            JsonValueKind.String => value.GetString(),
+            JsonValueKind.Number => value.GetRawText(),
+            _ => null
+        };
+        AddSafeErrorField(fields, name, text, userMessage);
+    }
+
+    private static void AddSafeErrorField(
+        SortedDictionary<string, string> fields,
+        string name,
+        string? value,
+        string userMessage)
+    {
+        var sanitizedValue = SanitizeProviderText(value, userMessage, MaximumProviderResponseExcerptLength);
+        if (sanitizedValue is not null)
+        {
+            fields[name] = sanitizedValue;
+        }
+    }
+
+    private static string? SanitizeProviderText(string? value, string userMessage, int maximumLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var sanitized = string.Join(" ", new string(value
+            .Select(character => char.IsControl(character) ? ' ' : character)
+            .ToArray())
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (sanitized.Length == 0 ||
+            (!string.IsNullOrEmpty(userMessage) &&
+             sanitized.Contains(userMessage, StringComparison.OrdinalIgnoreCase)) ||
+            CredentialMarkers.Any(marker =>
+                sanitized.Contains(marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return null;
+        }
+
+        return sanitized.Length <= maximumLength
+            ? sanitized
+            : sanitized[..maximumLength];
+    }
+
+    private sealed record ProviderFailureDetails(
+        string? Kind,
+        int? StatusCode,
+        string? ReasonPhrase,
+        string? ResponseExcerpt);
+
+    private static AgentRoutingShadowComparison CreateRoutingShadowComparison(
+        AgentRoutingDecision decision,
+        AgentLanguageModelResponse completion)
+    {
+        var toolNames = completion.ToolCalls.Select(static toolCall => toolCall.Name).ToArray();
+        var languageModelRoute = toolNames.Length switch
+        {
+            0 => AgentRoute.General,
+            1 => toolNames[0],
+            _ => null
+        };
+        var comparable = toolNames.Length <= 1;
+
+        return new AgentRoutingShadowComparison(
+            decision,
+            languageModelRoute,
+            toolNames,
+            comparable,
+            comparable
+                ? string.Equals(decision.SelectedRoute, languageModelRoute, StringComparison.Ordinal)
+                : null);
     }
 
     private static AgentServiceOptions ValidateOptions(AgentServiceOptions options)

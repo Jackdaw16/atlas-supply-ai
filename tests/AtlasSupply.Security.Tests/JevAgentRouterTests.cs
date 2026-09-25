@@ -20,22 +20,36 @@ public sealed class JevAgentRouterTests
         using var fixture = CreateFixture(handler);
 
         await fixture.Router.RouteAsync(
-            new AgentRoutingRequest("Which orders are delayed?", ["get_delayed_orders"]),
+            new AgentRoutingRequest("What orders are delayed?", ["get_delayed_orders"]),
             CancellationToken.None);
 
         using var document = JsonDocument.Parse(handler.Content!);
         var root = document.RootElement;
         Assert.Equal("typesafe-ai/jev", root.GetProperty("model").GetString());
-        Assert.Equal("Which orders are delayed?", root.GetProperty("input").GetString());
-        Assert.True(root.GetProperty("providerOptions").GetProperty("gateway").GetProperty("zeroDataRetention").GetBoolean());
-        Assert.Equal(["typesafe-ai"], root.GetProperty("providerOptions").GetProperty("gateway").GetProperty("only").EnumerateArray().Select(value => value.GetString()));
+        Assert.True(root.TryGetProperty("state", out var state));
+        Assert.Equal(JsonValueKind.String, state.ValueKind);
+        Assert.Equal("What orders are delayed?", state.GetString());
+        Assert.NotEqual(JsonValueKind.Object, state.ValueKind);
+        Assert.False(root.TryGetProperty("input", out _));
+        var gatewayOptions = root.GetProperty("providerOptions").GetProperty("gateway");
+        Assert.False(gatewayOptions.TryGetProperty("zeroDataRetention", out _));
+        Assert.Equal(["typesafe-ai"], gatewayOptions.GetProperty("only").EnumerateArray().Select(value => value.GetString()));
 
-        var question = Assert.Single(root.GetProperty("questions").EnumerateArray());
-        Assert.Equal("route", question.GetProperty("name").GetString());
-        Assert.Equal("choice", question.GetProperty("type").GetString());
-        Assert.Equal(
-            ["get_delayed_orders", AgentRoute.General],
-            question.GetProperty("criteria").EnumerateArray().Select(value => value.GetProperty("name").GetString()));
+        var questions = root.GetProperty("questions");
+        Assert.Equal(JsonValueKind.Object, questions.ValueKind);
+        Assert.NotEqual(JsonValueKind.Array, questions.ValueKind);
+        Assert.True(questions.TryGetProperty("route", out var route));
+        Assert.Equal(JsonValueKind.Object, route.ValueKind);
+        Assert.Equal("choice", route.GetProperty("type").GetString());
+        Assert.Equal("Which route should handle this user message?", route.GetProperty("instructions").GetString());
+
+        var criteria = route.GetProperty("criteria");
+        Assert.Equal(JsonValueKind.Object, criteria.ValueKind);
+        Assert.NotEqual(JsonValueKind.Array, criteria.ValueKind);
+        Assert.True(criteria.TryGetProperty("get_delayed_orders", out var delayedOrdersCriterion));
+        Assert.Equal("Route the message to the submitted tool 'get_delayed_orders'.", delayedOrdersCriterion.GetString());
+        Assert.True(criteria.TryGetProperty(AgentRoute.General, out var generalCriterion));
+        Assert.Equal("Handle the message without a submitted tool.", generalCriterion.GetString());
         Assert.Equal(new AuthenticationHeaderValue("Bearer", "test-gateway-key"), handler.Authorization);
     }
 
@@ -101,27 +115,55 @@ public sealed class JevAgentRouterTests
 
     [Theory]
     [MemberData(nameof(MalformedResponses))]
-    public async Task RouteAsync_RejectsMalformedOrInvalidGatewayResponses(string response)
+    public async Task RouteAsync_RejectsMalformedOrInvalidGatewayResponses(string response, string expectedFieldPath)
     {
         using var fixture = CreateFixture(new RecordingHandler(response));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Router.RouteAsync(
+        var exception = await Assert.ThrowsAsync<AgentRoutingResponseException>(() => fixture.Router.RouteAsync(
             new AgentRoutingRequest("Which orders are delayed?", ["get_delayed_orders"]),
             CancellationToken.None));
 
-        Assert.Contains("malformed", exception.Message, StringComparison.Ordinal);
+        Assert.Equal(expectedFieldPath, exception.FieldPath);
+        Assert.Contains($"'{expectedFieldPath}'", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task RouteAsync_RejectsNonSuccessGatewayResponse()
     {
-        using var fixture = CreateFixture(new RecordingHandler("{}", HttpStatusCode.BadGateway));
+        var responseBody = new string('x', 1_001);
+        using var fixture = CreateFixture(new RecordingHandler(
+            responseBody,
+            HttpStatusCode.BadGateway,
+            "Upstream route unavailable"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Router.RouteAsync(
+        var exception = await Assert.ThrowsAsync<AgentRoutingProviderException>(() => fixture.Router.RouteAsync(
             new AgentRoutingRequest("Which orders are delayed?", ["get_delayed_orders"]),
             CancellationToken.None));
 
-        Assert.Equal("AI Gateway evaluation failed with HTTP status 502.", exception.Message);
+        Assert.Equal(502, exception.StatusCode);
+        Assert.Equal("Upstream route unavailable", exception.ReasonPhrase);
+        Assert.Equal(1_000, exception.ResponseBody!.Length);
+        Assert.Equal(responseBody[..1_000], exception.ResponseBody);
+        Assert.Equal(
+            "Agent routing provider returned status 502 (Upstream route unavailable).",
+            exception.Message);
+    }
+
+    [Fact]
+    public async Task RouteAsync_WrapsTransportFailuresAsProviderFailuresWithSafeInnerException()
+    {
+        using var fixture = CreateFixture(new ThrowingHandler());
+
+        var exception = await Assert.ThrowsAsync<AgentRoutingProviderException>(() => fixture.Router.RouteAsync(
+            new AgentRoutingRequest("Which orders are delayed?", ["get_delayed_orders"]),
+            CancellationToken.None));
+
+        Assert.Null(exception.StatusCode);
+        Assert.Null(exception.ReasonPhrase);
+        Assert.Null(exception.ResponseBody);
+        var innerException = Assert.IsType<HttpRequestException>(exception.InnerException);
+        Assert.Equal("Agent routing provider transport request failed.", innerException.Message);
+        Assert.IsType<HttpRequestException>(innerException.InnerException);
     }
 
     [Fact]
@@ -147,15 +189,17 @@ public sealed class JevAgentRouterTests
 
     public static IEnumerable<object[]> MalformedResponses()
     {
-        yield return ["{not-json"];
-        yield return ["{\"answers\":{}}"];
-        yield return ["{\"answers\":{\"route\":{\"choice\":\"unknown_tool\",\"probabilities\":{\"unknown_tool\":0.97}}}}"];
-        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"general\":0.03}}}}"];
-        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"get_delayed_orders\":1.01}}}}"];
-        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"get_delayed_orders\":0.97}}},\"providerMetadata\":{\"gateway\":{\"cost\":\"not-a-decimal\"}}}"];
+        yield return ["{not-json", "response"];
+        yield return ["{}", "answers"];
+        yield return ["{\"answers\":{}}", "answers.route"];
+        yield return ["{\"answers\":{\"route\":{}}}", "answers.route.choice"];
+        yield return ["{\"answers\":{\"route\":{\"choice\":\"unknown_tool\",\"probabilities\":{\"unknown_tool\":0.97}}}}", "answers.route.choice"];
+        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"general\":0.03}}}}", "answers.route.probabilities"];
+        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"get_delayed_orders\":1.01}}}}", "answers.route.probabilities"];
+        yield return ["{\"answers\":{\"route\":{\"choice\":\"get_delayed_orders\",\"probabilities\":{\"get_delayed_orders\":0.97}}},\"providerMetadata\":{\"gateway\":{\"cost\":\"not-a-decimal\"}}}", "providerMetadata.gateway.cost"];
     }
 
-    private static RouterFixture CreateFixture(RecordingHandler handler, string? apiKey = "test-gateway-key")
+    private static RouterFixture CreateFixture(HttpMessageHandler handler, string? apiKey = "test-gateway-key")
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -197,7 +241,10 @@ public sealed class JevAgentRouterTests
         public void Dispose() => serviceProvider.Dispose();
     }
 
-    private sealed class RecordingHandler(string responseContent, HttpStatusCode statusCode = HttpStatusCode.OK) : HttpMessageHandler
+    private sealed class RecordingHandler(
+        string responseContent,
+        HttpStatusCode statusCode = HttpStatusCode.OK,
+        string? reasonPhrase = null) : HttpMessageHandler
     {
         internal AuthenticationHeaderValue? Authorization { get; private set; }
 
@@ -214,8 +261,17 @@ public sealed class JevAgentRouterTests
             Content = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(statusCode)
             {
+                ReasonPhrase = reasonPhrase,
                 Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
             };
         }
+    }
+
+    private sealed class ThrowingHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken) =>
+            throw new HttpRequestException("Transport detail must not reach the shadow log.");
     }
 }

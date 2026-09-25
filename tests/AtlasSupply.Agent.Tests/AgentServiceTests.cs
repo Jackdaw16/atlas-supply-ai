@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AtlasSupply.Application;
 using AtlasSupply.Domain;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -167,6 +168,353 @@ public sealed class AgentServiceTests
         Assert.Equal(2, languageModel.Requests.Count);
         Assert.Single(retrieval.Inputs);
         Assert.Empty(session.Invocations);
+    }
+
+    [Fact]
+    public async Task ChatAsync_DisabledShadowRoutingDoesNotInvokeRouterOrChangePrimaryBehavior()
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(AgentToolCapabilityMap.ListSuppliersToolName));
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            "Lists suppliers.",
+            EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                Final("Suppliers listed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: false),
+            router: router);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Empty(router.Requests);
+        Assert.Equal("Suppliers listed.", result.Message);
+        Assert.Equal([AgentToolCapabilityMap.ListSuppliersToolName], result.ToolsUsed);
+        Assert.Single(session.Invocations);
+    }
+
+    [Fact]
+    public async Task ChatAsync_EnabledShadowRoutingUsesAuthorizedToolCatalogOnly()
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(AgentRoute.General));
+        var session = new FakeToolSession(
+            new AgentToolDefinition(AgentToolCapabilityMap.ListSuppliersToolName, "Lists suppliers.", EmptyObjectSchema()),
+            new AgentToolDefinition(AgentToolCapabilityMap.CreateIncidentToolName, "Creates an incident.", EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Suppliers are available.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router);
+
+        await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        var routingRequest = Assert.Single(router.Requests);
+        Assert.Equal("List suppliers.", routingRequest.Message);
+        Assert.Equal(
+            [AgentToolCapabilityMap.SearchKnowledgeToolName, AgentToolCapabilityMap.ListSuppliersToolName],
+            routingRequest.AvailableTools);
+        Assert.DoesNotContain(AgentToolCapabilityMap.CreateIncidentToolName, routingRequest.AvailableTools);
+    }
+
+    [Theory]
+    [InlineData(AgentToolCapabilityMap.ListSuppliersToolName, true)]
+    [InlineData(AgentRoute.General, false)]
+    public async Task ChatAsync_EnabledShadowRoutingComparesSingleFirstToolCall(string jevRoute, bool expectedMatch)
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(jevRoute));
+        var logger = new ListLogger<AgentService>();
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            "Lists suppliers.",
+            EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                Final("Suppliers listed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router,
+            logger: logger);
+
+        await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Single(router.Requests);
+        var comparison = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowComparison");
+        Assert.Equal(LogLevel.Information, comparison.LogLevel);
+        Assert.Equal(1, comparison.EventId.Id);
+        Assert.Equal(
+            "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Matched={Matched} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
+            comparison.Properties["{OriginalFormat}"]);
+        Assert.Equal(jevRoute, comparison.Properties["JevRoute"]);
+        Assert.Equal(0.91m, comparison.Properties["JevProbability"]);
+        Assert.IsAssignableFrom<IReadOnlyDictionary<string, decimal>>(comparison.Properties["JevProbabilities"]);
+        Assert.Equal(AgentToolCapabilityMap.ListSuppliersToolName, comparison.Properties["LlmRoute"]);
+        Assert.Equal([AgentToolCapabilityMap.ListSuppliersToolName], Assert.IsAssignableFrom<IEnumerable<string>>(comparison.Properties["LlmToolNames"]));
+        Assert.Equal(1, comparison.Properties["LlmToolCount"]);
+        Assert.Equal(true, comparison.Properties["Comparable"]);
+        Assert.Equal(expectedMatch, comparison.Properties["Matched"]);
+        Assert.Equal(17L, comparison.Properties["JevElapsedMilliseconds"]);
+        Assert.Equal(12, comparison.Properties["JevInputTokens"]);
+        Assert.Equal(8, comparison.Properties["JevOutputTokens"]);
+        Assert.Equal(0.000013m, comparison.Properties["JevEstimatedCostUsd"]);
+    }
+
+    [Fact]
+    public async Task ChatAsync_EnabledShadowRoutingMapsNoFirstToolCallsToGeneral()
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(AgentRoute.General));
+        var logger = new ListLogger<AgentService>();
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("General response.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router,
+            logger: logger);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Hello."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("General response.", result.Message);
+        var comparison = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowComparison");
+        Assert.Equal(AgentRoute.General, comparison.Properties["LlmRoute"]);
+        Assert.Equal(0, comparison.Properties["LlmToolCount"]);
+        Assert.Equal(true, comparison.Properties["Comparable"]);
+        Assert.Equal(true, comparison.Properties["Matched"]);
+    }
+
+    [Fact]
+    public async Task ChatAsync_EnabledShadowRoutingMarksMultipleFirstToolCallsNonComparable()
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(AgentToolCapabilityMap.ListSuppliersToolName));
+        var logger = new ListLogger<AgentService>();
+        var session = new FakeToolSession(
+            new AgentToolDefinition(AgentToolCapabilityMap.ListSuppliersToolName, "Lists suppliers.", EmptyObjectSchema()),
+            new AgentToolDefinition(AgentToolCapabilityMap.GetDelayedOrdersToolName, "Lists delayed orders.", EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                new AgentLanguageModelResponse(string.Empty,
+                [
+                    new AgentToolCall("call-list", AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                    new AgentToolCall("call-delayed", AgentToolCapabilityMap.GetDelayedOrdersToolName, "{}")
+                ]),
+                Final("Supplier and order details listed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router,
+            logger: logger);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("List suppliers and delayed orders."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal(
+            [AgentToolCapabilityMap.ListSuppliersToolName, AgentToolCapabilityMap.GetDelayedOrdersToolName],
+            result.ToolsUsed);
+        Assert.Single(router.Requests);
+        var comparison = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowComparison");
+        Assert.Null(comparison.Properties["LlmRoute"]);
+        Assert.Equal(
+            [AgentToolCapabilityMap.ListSuppliersToolName, AgentToolCapabilityMap.GetDelayedOrdersToolName],
+            Assert.IsAssignableFrom<IEnumerable<string>>(comparison.Properties["LlmToolNames"]));
+        Assert.Equal(2, comparison.Properties["LlmToolCount"]);
+        Assert.Equal(false, comparison.Properties["Comparable"]);
+        Assert.Null(comparison.Properties["Matched"]);
+    }
+
+    [Fact]
+    public async Task ChatAsync_ShadowProviderFailureLogsSafeStructuredExceptionDetailsAndPreservesNormalFlow()
+    {
+        const string userMessage = "List suppliers for user 123 with private contract details.";
+        const string bearerToken = "Bearer bearer-value-must-not-be-logged";
+        const string apiKey = "api-key-value-must-not-be-logged";
+        const string token = "token-value-must-not-be-logged";
+        var router = new FakeAgentRouter(exception: new AgentRoutingProviderException(
+            statusCode: 400,
+            reasonPhrase: "Bad\r\nRequest",
+            responseBody: $$"""
+                {
+                  "error": {
+                    "message": "Rejected request: {{userMessage}}",
+                    "code": "invalid_request",
+                    "type": "invalid_request_error",
+                    "authorization": "{{bearerToken}}",
+                    "apiKey": "{{apiKey}}",
+                    "details": { "token": "{{token}}" }
+                  }
+                }
+                """,
+            new HttpRequestException("Agent routing provider transport request failed.")));
+        var logger = new ListLogger<AgentService>();
+        var session = new FakeToolSession(new AgentToolDefinition(
+            AgentToolCapabilityMap.ListSuppliersToolName,
+            "Lists suppliers.",
+            EmptyObjectSchema()));
+        var service = CreateService(
+            new ScriptedLanguageModel(
+                ToolCall(AgentToolCapabilityMap.ListSuppliersToolName, "{}"),
+                Final("Suppliers listed.")),
+            session,
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router,
+            logger: logger);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest(userMessage),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("Suppliers listed.", result.Message);
+        Assert.Equal([AgentToolCapabilityMap.ListSuppliersToolName], result.ToolsUsed);
+        Assert.Single(session.Invocations);
+        var failure = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowFailure");
+        Assert.Equal(LogLevel.Warning, failure.LogLevel);
+        Assert.Equal("ProviderFailure", failure.Properties["ShadowFailureType"]);
+        Assert.Equal(nameof(AgentRoutingProviderException), failure.Properties["ExceptionType"]);
+        Assert.Equal(
+            "Agent routing provider returned status 400 (Bad Request).",
+            failure.Properties["ExceptionMessage"]);
+        Assert.Equal(nameof(HttpRequestException), failure.Properties["InnerExceptionType"]);
+        Assert.Equal(
+            "Agent routing provider transport request failed.",
+            failure.Properties["InnerExceptionMessage"]);
+        Assert.Equal("HttpResponse", failure.Properties["ProviderFailureKind"]);
+        Assert.Equal(400, failure.Properties["ProviderStatusCode"]);
+        Assert.Equal("Bad Request", failure.Properties["ProviderReasonPhrase"]);
+        var excerpt = Assert.IsType<string>(failure.Properties["ProviderResponseExcerpt"]);
+        using var excerptDocument = JsonDocument.Parse(excerpt);
+        Assert.Equal("invalid_request", excerptDocument.RootElement.GetProperty("code").GetString());
+        Assert.Equal("invalid_request_error", excerptDocument.RootElement.GetProperty("type").GetString());
+        Assert.False(excerptDocument.RootElement.TryGetProperty("message", out _));
+        Assert.DoesNotContain(userMessage, excerpt, StringComparison.Ordinal);
+        Assert.DoesNotContain(bearerToken, excerpt, StringComparison.Ordinal);
+        Assert.DoesNotContain(apiKey, excerpt, StringComparison.Ordinal);
+        Assert.DoesNotContain(token, excerpt, StringComparison.Ordinal);
+        Assert.Null(failure.Exception);
+    }
+
+    [Fact]
+    public async Task ChatAsync_ShadowTransportProviderFailureLogsTransportDetails()
+    {
+        var logger = new ListLogger<AgentService>();
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Suppliers listed.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: new FakeAgentRouter(exception: new AgentRoutingProviderException(
+                statusCode: null,
+                reasonPhrase: null,
+                responseBody: null,
+                new HttpRequestException("Agent routing provider transport request failed."))),
+            logger: logger);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("Suppliers listed.", result.Message);
+        var failure = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowFailure");
+        Assert.Equal("Transport", failure.Properties["ProviderFailureKind"]);
+        Assert.Null(failure.Properties["ProviderStatusCode"]);
+        Assert.Null(failure.Properties["ProviderReasonPhrase"]);
+        Assert.Null(failure.Properties["ProviderResponseExcerpt"]);
+        Assert.Null(failure.Exception);
+    }
+
+    [Theory]
+    [MemberData(nameof(ShadowRoutingFailures))]
+    public async Task ChatAsync_ShadowRoutingClassifiesResponseValidationRequestValidationAndUnknownFailures(
+        Exception exception,
+        string expectedFailureType)
+    {
+        var logger = new ListLogger<AgentService>();
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Suppliers listed.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: new FakeAgentRouter(exception: exception),
+            logger: logger);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("List suppliers."),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Equal("Suppliers listed.", result.Message);
+        var failure = Assert.Single(
+            logger.Entries,
+            entry => entry.EventId.Name == "AgentRoutingShadowFailure");
+        Assert.Equal(expectedFailureType, failure.Properties["ShadowFailureType"]);
+        Assert.Equal(exception.GetType().Name, failure.Properties["ExceptionType"]);
+        Assert.Equal(exception.Message, failure.Properties["ExceptionMessage"]);
+        Assert.Null(failure.Properties["InnerExceptionType"]);
+        Assert.Null(failure.Properties["InnerExceptionMessage"]);
+        Assert.Null(failure.Properties["ProviderFailureKind"]);
+        Assert.Null(failure.Properties["ProviderStatusCode"]);
+        Assert.Null(failure.Properties["ProviderReasonPhrase"]);
+        Assert.Null(failure.Properties["ProviderResponseExcerpt"]);
+        Assert.Null(failure.Exception);
+    }
+
+    public static IEnumerable<object[]> ShadowRoutingFailures()
+    {
+        yield return [new AgentRoutingResponseException("answers.route", "must be a JSON object"), "ResponseValidationFailure"];
+        yield return [new ArgumentException("Agent routing message is required.", "request"), "RequestValidationFailure"];
+        yield return [new InvalidOperationException("Unexpected shadow failure."), "UnknownFailure"];
+    }
+
+    [Fact]
+    public async Task ChatAsync_EnabledShadowRoutingSkipsRouterWithoutAuthorizedTools()
+    {
+        var router = new FakeAgentRouter(CreateRoutingDecision(AgentRoute.General));
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("No tools are available.")),
+            new FakeToolSession(new AgentToolDefinition(
+                AgentToolCapabilityMap.CreateIncidentToolName,
+                "Creates an incident.",
+                EmptyObjectSchema())),
+            new FakeKnowledgeRetrievalService(),
+            options: new AgentServiceOptions(ExperimentalJevShadowRouting: true),
+            router: router);
+
+        var result = await service.ChatAsync(
+            new AgentChatRequest("Create an incident."),
+            new AgentAuthorizationContext(ReadOnlyUserId, "readonly-user", []),
+            CancellationToken.None);
+
+        Assert.Equal("No tools are available.", result.Message);
+        Assert.Empty(router.Requests);
     }
 
     [Fact]
@@ -508,7 +856,9 @@ public sealed class AgentServiceTests
         FakeToolSession toolSession,
         FakeKnowledgeRetrievalService retrieval,
         AgentServiceOptions? options = null,
-        FakeAgentToolAuditWriter? auditWriter = null)
+        FakeAgentToolAuditWriter? auditWriter = null,
+        FakeAgentRouter? router = null,
+        ILogger<AgentService>? logger = null)
     {
         return new AgentService(
             languageModel,
@@ -516,8 +866,33 @@ public sealed class AgentServiceTests
             retrieval,
             auditWriter ?? new FakeAgentToolAuditWriter(),
             TimeProvider.System,
-            NullLogger<AgentService>.Instance,
-            options);
+            logger ?? NullLogger<AgentService>.Instance,
+            options,
+            router);
+    }
+
+    private static AgentRoutingDecision CreateRoutingDecision(string selectedRoute)
+    {
+        var probabilities = new Dictionary<string, decimal>
+        {
+            [selectedRoute] = 0.91m
+        };
+        if (selectedRoute != AgentRoute.General)
+        {
+            probabilities.Add(AgentRoute.General, 0.09m);
+        }
+
+        return new AgentRoutingDecision(
+            selectedRoute,
+            0.91m,
+            probabilities,
+            new AgentRoutingTelemetry(
+                Provider: "test-provider",
+                Model: "test-model",
+                InputTokens: 12,
+                OutputTokens: 8,
+                EstimatedCostUsd: 0.000013m,
+                ElapsedMilliseconds: 17));
     }
 
     private static AgentLanguageModelResponse ToolCall(string name, string arguments) =>
@@ -543,6 +918,60 @@ public sealed class AgentServiceTests
         {
             Requests.Add(request);
             return Task.FromResult(_responses.Dequeue());
+        }
+    }
+
+    private sealed class FakeAgentRouter(
+        AgentRoutingDecision? decision = null,
+        Exception? exception = null) : IAgentRouter
+    {
+        public List<AgentRoutingRequest> Requests { get; } = [];
+
+        public Task<AgentRoutingDecision> RouteAsync(
+            AgentRoutingRequest request,
+            CancellationToken cancellationToken)
+        {
+            Requests.Add(request);
+            return exception is null
+                ? Task.FromResult(decision ?? CreateRoutingDecision(AgentRoute.General))
+                : Task.FromException<AgentRoutingDecision>(exception);
+        }
+    }
+
+    private sealed class ListLogger<T> : ILogger<T>
+    {
+        public List<LogEntry> Entries { get; } = [];
+
+        public IDisposable BeginScope<TState>(TState state) where TState : notnull => NoopScope.Instance;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+        {
+            var properties = state is IEnumerable<KeyValuePair<string, object?>> values
+                ? values.ToDictionary(value => value.Key, value => value.Value, StringComparer.Ordinal)
+                : new Dictionary<string, object?>();
+            Entries.Add(new LogEntry(logLevel, eventId, properties, exception));
+        }
+    }
+
+    private sealed record LogEntry(
+        LogLevel LogLevel,
+        EventId EventId,
+        IReadOnlyDictionary<string, object?> Properties,
+        Exception? Exception);
+
+    private sealed class NoopScope : IDisposable
+    {
+        public static readonly NoopScope Instance = new();
+
+        public void Dispose()
+        {
         }
     }
 

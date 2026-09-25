@@ -77,7 +77,7 @@ dotnet run --project apps/api/AtlasSupply.Api
 
 `OpenAI:EmbeddingModel` defaults to `text-embedding-3-small`. Set `Knowledge__SourceDirectory` only to a repository-relative Markdown source directory; it defaults to `docs/knowledge`.
 
-The experimental Jev agent router evaluates a message against submitted tool names plus a `general` route. Set `AI_GATEWAY_API_KEY` only when invoking that component; it is registered but is not connected to the production chat path.
+`Agent:ExperimentalJevShadowRouting` defaults to `false`. When explicitly enabled, the experimental Jev router compares its route with the first OpenAI completion for benchmarking only; it never changes tool execution or the final chat response. `AI_GATEWAY_API_KEY` is required only while this opt-in comparison runs.
 
 The existing API connection configuration uses a different database user from the Docker Compose default. Before the database commands, set `POSTGRESQL_CONNECTION_STRING` in the shell to a connection string that matches the Docker environment you started; do not change checked-in configuration or add credentials to it.
 
