@@ -228,7 +228,7 @@ public sealed class AgentServiceTests
     [Theory]
     [InlineData(AgentToolCapabilityMap.ListSuppliersToolName, true)]
     [InlineData(AgentRoute.General, false)]
-    public async Task ChatAsync_EnabledShadowRoutingComparesSingleFirstToolCall(string jevRoute, bool expectedMatch)
+    public async Task ChatAsync_EnabledShadowRoutingComparesSingleFirstToolCall(string jevRoute, bool expectedAgreement)
     {
         var router = new FakeAgentRouter(CreateRoutingDecision(jevRoute));
         var logger = new ListLogger<AgentService>();
@@ -258,7 +258,7 @@ public sealed class AgentServiceTests
         Assert.Equal(LogLevel.Information, comparison.LogLevel);
         Assert.Equal(1, comparison.EventId.Id);
         Assert.Equal(
-            "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Matched={Matched} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
+            "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Agreement={Agreement} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
             comparison.Properties["{OriginalFormat}"]);
         Assert.Equal(jevRoute, comparison.Properties["JevRoute"]);
         Assert.Equal(0.91m, comparison.Properties["JevProbability"]);
@@ -267,7 +267,7 @@ public sealed class AgentServiceTests
         Assert.Equal([AgentToolCapabilityMap.ListSuppliersToolName], Assert.IsAssignableFrom<IEnumerable<string>>(comparison.Properties["LlmToolNames"]));
         Assert.Equal(1, comparison.Properties["LlmToolCount"]);
         Assert.Equal(true, comparison.Properties["Comparable"]);
-        Assert.Equal(expectedMatch, comparison.Properties["Matched"]);
+        Assert.Equal(expectedAgreement, comparison.Properties["Agreement"]);
         Assert.Equal(17L, comparison.Properties["JevElapsedMilliseconds"]);
         Assert.Equal(12, comparison.Properties["JevInputTokens"]);
         Assert.Equal(8, comparison.Properties["JevOutputTokens"]);
@@ -299,7 +299,7 @@ public sealed class AgentServiceTests
         Assert.Equal(AgentRoute.General, comparison.Properties["LlmRoute"]);
         Assert.Equal(0, comparison.Properties["LlmToolCount"]);
         Assert.Equal(true, comparison.Properties["Comparable"]);
-        Assert.Equal(true, comparison.Properties["Matched"]);
+        Assert.Equal(true, comparison.Properties["Agreement"]);
     }
 
     [Fact]
@@ -342,7 +342,7 @@ public sealed class AgentServiceTests
             Assert.IsAssignableFrom<IEnumerable<string>>(comparison.Properties["LlmToolNames"]));
         Assert.Equal(2, comparison.Properties["LlmToolCount"]);
         Assert.Equal(false, comparison.Properties["Comparable"]);
-        Assert.Null(comparison.Properties["Matched"]);
+        Assert.Null(comparison.Properties["Agreement"]);
     }
 
     [Fact]

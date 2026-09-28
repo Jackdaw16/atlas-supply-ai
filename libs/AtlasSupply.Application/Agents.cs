@@ -114,7 +114,7 @@ public sealed record AgentRoutingShadowComparison(
     string? LanguageModelRoute,
     IReadOnlyList<string> LanguageModelToolNames,
     bool Comparable,
-    bool? Matched);
+    bool? AgreesWithLanguageModel);
 
 public interface IAgentRouter
 {
@@ -322,13 +322,13 @@ public sealed class AgentService(
 
             logger.LogInformation(
                 AgentRoutingShadowComparisonEventId,
-                "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Matched={Matched} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
+                "Jev shadow comparison: Jev={JevRoute} ({JevProbability:P1}) OpenAI={LlmRoute} Tools={LlmToolNames} Comparable={Comparable} Agreement={Agreement} LatencyMs={JevElapsedMilliseconds} CostUsd={JevEstimatedCostUsd} JevProbabilities={JevProbabilities} LlmToolCount={LlmToolCount} JevInputTokens={JevInputTokens} JevOutputTokens={JevOutputTokens}",
                 comparison.RoutingDecision.SelectedRoute,
                 comparison.RoutingDecision.SelectedProbability,
                 comparison.LanguageModelRoute,
                 comparison.LanguageModelToolNames,
                 comparison.Comparable,
-                comparison.Matched,
+                comparison.AgreesWithLanguageModel,
                 comparison.RoutingDecision.Telemetry.ElapsedMilliseconds,
                 comparison.RoutingDecision.Telemetry.EstimatedCostUsd,
                 comparison.RoutingDecision.ProbabilityDistribution,
