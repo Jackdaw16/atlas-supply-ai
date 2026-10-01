@@ -1,7 +1,8 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { CHAT_API_CONFIG } from '../../../core/services/chat-api.config';
 import { Supplier, SupplierRequest } from '../models/supplier.models';
+import { PagedResponse } from '../../../core/models/paged-response.model';
 
 @Injectable({ providedIn: 'root' })
 export class SupplierService {
@@ -10,6 +11,14 @@ export class SupplierService {
 
   list() {
     return this.http.get<Supplier[]>(`${this.apiConfig.baseUrl}/api/suppliers`);
+  }
+
+  page(pageIndex: number, pageSize: number, search = '') {
+    const params = new HttpParams()
+      .set('pageIndex', pageIndex)
+      .set('pageSize', pageSize)
+      .set('search', search);
+    return this.http.get<PagedResponse<Supplier>>(`${this.apiConfig.baseUrl}/api/suppliers/page`, { params });
   }
 
   create(request: SupplierRequest) {

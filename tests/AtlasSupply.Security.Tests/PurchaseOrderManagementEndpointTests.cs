@@ -169,6 +169,30 @@ public sealed class PurchaseOrderManagementEndpointTests
         Assert.Equal(HttpStatusCode.Unauthorized, cancelResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task OrderManagement_PageEndpointRequiresAuthenticationAndFiltersDelayedOrders()
+    {
+        using var factory = new OrderApiFactory();
+        using var client = factory.CreateClient();
+
+        var unauthorizedResponse = await client.GetAsync("/api/orders/page?pageIndex=0&pageSize=25");
+        Authenticate(client);
+        var pageResponse = await client.GetAsync("/api/orders/page?pageIndex=0&pageSize=25&status=Approved&isDelayed=true");
+        var page = await pageResponse.Content.ReadFromJsonAsync<PagedResult<PurchaseOrderResult>>();
+        var invalidResponse = await client.GetAsync("/api/orders/page?pageIndex=0&pageSize=101");
+        var maximumPageResponse = await client.GetAsync("/api/orders/page?pageIndex=21474836&pageSize=100");
+        var overflowingResponse = await client.GetAsync("/api/orders/page?pageIndex=21474837&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, pageResponse.StatusCode);
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.All(page.Items, order => Assert.True(order.IsDelayed));
+        Assert.Equal(HttpStatusCode.OK, maximumPageResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, overflowingResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+    }
+
     private static void Authenticate(HttpClient client)
     {
         var now = DateTimeOffset.UtcNow;
@@ -234,6 +258,13 @@ public sealed class PurchaseOrderManagementEndpointTests
     {
         private readonly Dictionary<Guid, Supplier> suppliers = initialSuppliers.ToDictionary(supplier => supplier.Id);
         public Task<IReadOnlyList<Supplier>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<Supplier>>([.. suppliers.Values]);
+        public Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = suppliers.Values.OrderBy(supplier => supplier.Name).ThenBy(supplier => supplier.Id).ToArray();
+            return Task.FromResult(new PagedResult<Supplier>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
         public Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(suppliers.GetValueOrDefault(id));
         public Task<Supplier?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(suppliers.GetValueOrDefault(id));
         public Task CreateAsync(Supplier supplier, CancellationToken cancellationToken) { suppliers.Add(supplier.Id, supplier); return Task.CompletedTask; }
@@ -247,8 +278,24 @@ public sealed class PurchaseOrderManagementEndpointTests
         public Task<PurchaseOrder?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(purchaseOrders.GetValueOrDefault(id));
         public Task<PurchaseOrder?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(purchaseOrders.GetValueOrDefault(id));
         public Task<IReadOnlyList<PurchaseOrder>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PurchaseOrder>>([.. purchaseOrders.Values.OrderByDescending(order => order.CreatedAtUtc)]);
+        public Task<PagedResult<PurchaseOrder>> PageAsync(PurchaseOrderPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = purchaseOrders.Values
+                .Where(order => request.Status is null || order.Status == request.Status)
+                .Where(order => request.SupplierId is null || order.SupplierId == request.SupplierId)
+                .Where(order => request.IsDelayed is null || IsDelayed(order) == request.IsDelayed)
+                .OrderByDescending(order => order.CreatedAtUtc)
+                .ThenBy(order => order.Id)
+                .ToArray();
+            return Task.FromResult(new PagedResult<PurchaseOrder>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
         public Task<IReadOnlyList<PurchaseOrder>> ListOutstandingApprovedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PurchaseOrder>>([.. purchaseOrders.Values.Where(order => order.Status == PurchaseOrderStatus.Approved && order.ApprovedAtUtc is not null && order.ReceivedAtUtc is null)]);
         public Task CreateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken) { Add(purchaseOrder); return Task.CompletedTask; }
         public Task UpdateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken) => Task.CompletedTask;
+
+        private static bool IsDelayed(PurchaseOrder order) =>
+            order.Status == PurchaseOrderStatus.Approved && order.ApprovedAtUtc is not null && order.ReceivedAtUtc is null;
     }
 }

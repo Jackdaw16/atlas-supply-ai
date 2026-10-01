@@ -1,5 +1,38 @@
-:host { display: block; }
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  min-height: 0;
+}
 
-.order-form { min-width: min(38rem, calc(100vw - 4rem)); }
+.order-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
 
-.item-row { background: rgb(2 6 23 / 0.28); }
+.order-form__body {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.order-form__items,
+.order-form__item-list {
+  display: grid;
+}
+
+.order-form__items {
+  gap: 1rem;
+}
+
+.order-form__item-list {
+  gap: 1.25rem;
+}
+
+.item-row {
+  display: grid;
+  gap: 1.25rem;
+  background: rgb(2 6 23 / 0.28);
+}

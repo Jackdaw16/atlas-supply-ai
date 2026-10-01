@@ -10,6 +10,8 @@ public interface IPurchaseOrderRepository
 
     Task<IReadOnlyList<PurchaseOrder>> ListAsync(CancellationToken cancellationToken);
 
+    Task<PagedResult<PurchaseOrder>> PageAsync(PurchaseOrderPageRequest request, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<PurchaseOrder>> ListOutstandingApprovedAsync(CancellationToken cancellationToken);
 
     Task CreateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken);
@@ -58,12 +60,35 @@ public sealed record PurchaseOrderResult(
     decimal TotalAmount,
     bool IsDelayed);
 
+public sealed record PurchaseOrderPageRequest(
+    PageRequest Page,
+    string? Search,
+    PurchaseOrderStatus? Status,
+    Guid? SupplierId,
+    bool? IsDelayed);
+
 public sealed class ListPurchaseOrders(IPurchaseOrderRepository purchaseOrderRepository)
 {
     public async Task<IReadOnlyList<PurchaseOrderResult>> ExecuteAsync(CancellationToken cancellationToken)
     {
         var purchaseOrders = await purchaseOrderRepository.ListAsync(cancellationToken);
         return purchaseOrders.Select(PurchaseOrderResults.From).ToArray();
+    }
+}
+
+public sealed class PagePurchaseOrders(IPurchaseOrderRepository purchaseOrderRepository)
+{
+    public async Task<PagedResult<PurchaseOrderResult>> ExecuteAsync(
+        PurchaseOrderPageRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Page.Validate();
+
+        var result = await purchaseOrderRepository.PageAsync(request, cancellationToken);
+        return new PagedResult<PurchaseOrderResult>(
+            result.Items.Select(PurchaseOrderResults.From).ToArray(),
+            result.TotalCount);
     }
 }
 

@@ -1,0 +1,27 @@
+<nav class="atlas-paginator" aria-label="Pagination" [attr.aria-busy]="loading()">
+  <label>
+    <span>Rows per page</span>
+    <select [value]="pageSize()" [disabled]="disabled() || loading()" (change)="selectPageSize($event)">
+      @for (option of pageSizeOptions(); track option) {
+        <option [value]="option">{{ option }}</option>
+      }
+    </select>
+  </label>
+
+  <p role="status" aria-live="polite">{{ rangeLabel() }}</p>
+
+  <div>
+    <button type="button" aria-label="First page" [disabled]="!canNavigate(0)" (click)="goToPage(0)">
+      <span aria-hidden="true">«</span>
+    </button>
+    <button type="button" aria-label="Previous page" [disabled]="!canNavigate(pageIndex() - 1)" (click)="goToPage(pageIndex() - 1)">
+      <span aria-hidden="true">‹</span>
+    </button>
+    <button type="button" aria-label="Next page" [disabled]="!canNavigate(pageIndex() + 1)" (click)="goToPage(pageIndex() + 1)">
+      <span aria-hidden="true">›</span>
+    </button>
+    <button type="button" aria-label="Last page" [disabled]="!canNavigate(lastPageIndex())" (click)="goToPage(lastPageIndex())">
+      <span aria-hidden="true">»</span>
+    </button>
+  </div>
+</nav>

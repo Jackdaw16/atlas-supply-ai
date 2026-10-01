@@ -11,41 +11,35 @@ import { SupplierListComponent } from './supplier-list.component';
 describe('SupplierListComponent', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('searches supplier names and emails without matching status labels', () => {
+  it('resets to the first page when search changes', () => {
+    const page = vi.fn(() => of({ items: [], totalCount: 0 }));
     TestBed.configureTestingModule({
       providers: [
-        { provide: SupplierService, useValue: { list: () => of([]) } },
+        { provide: SupplierService, useValue: { page } },
         { provide: MatDialog, useValue: {} },
         { provide: MatSnackBar, useValue: {} }
       ]
     });
     const component = TestBed.runInInjectionContext(() => new SupplierListComponent()) as unknown as {
-      suppliers: { set: (suppliers: Supplier[]) => void };
-      search: { set: (search: string) => void };
-      filteredSuppliers: () => Supplier[];
+      pageIndex: { set: (pageIndex: number) => void; (): number };
+      updateSearch: (search: string) => void;
     };
 
-    component.suppliers.set([
-      { id: 'active-supplier', name: 'Northstar', contactEmail: 'orders@northstar.example', isActive: true },
-      { id: 'inactive-supplier', name: 'Southwind', contactEmail: 'orders@southwind.example', isActive: false }
-    ]);
-    component.search.set('active');
+    component.pageIndex.set(2);
+    component.updateSearch('northstar');
 
-    expect(component.filteredSuppliers()).toEqual([]);
-    component.search.set('northstar');
-    expect(component.filteredSuppliers().map((supplier) => supplier.id)).toEqual(['active-supplier']);
+    expect(component.pageIndex()).toBe(0);
+    expect(page).toHaveBeenLastCalledWith(0, 25, 'northstar');
   });
 
-  it('renders accessible icon-only row actions', () => {
+  it('renders accessible icon-only row actions and the shared paginator', () => {
     TestBed.configureTestingModule({
       imports: [SupplierListComponent],
       providers: [
         provideNoopAnimations(),
         {
           provide: SupplierService,
-          useValue: {
-            list: () => of([{ id: 'northstar', name: 'Northstar', contactEmail: null, isActive: true }])
-          }
+          useValue: { page: () => of({ items: [{ id: 'northstar', name: 'Northstar', contactEmail: null, isActive: true }], totalCount: 1 }) }
         },
         { provide: MatDialog, useValue: {} },
         { provide: MatSnackBar, useValue: {} }
@@ -61,13 +55,14 @@ describe('SupplierListComponent', () => {
     expect(actions.querySelector('[aria-label="Edit Northstar"]')).not.toBeNull();
     expect(actions.querySelector('[aria-label="Deactivate Northstar"] mat-icon')?.textContent?.trim()).toBe('toggle_on');
     expect(actions.textContent).not.toContain('Deactivate');
+    expect(fixture.nativeElement.querySelector('app-atlas-paginator')).not.toBeNull();
   });
 
   it('opens a naturally sized dialog constrained to the viewport', () => {
     const dialog = { open: vi.fn(() => ({ afterClosed: () => of(undefined) })) };
     TestBed.configureTestingModule({
       providers: [
-        { provide: SupplierService, useValue: { list: () => of([]) } },
+        { provide: SupplierService, useValue: { page: () => of({ items: [], totalCount: 0 }) } },
         { provide: MatDialog, useValue: dialog },
         { provide: MatSnackBar, useValue: {} }
       ]

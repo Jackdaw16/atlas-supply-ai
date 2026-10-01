@@ -25,6 +25,14 @@ describe('SupplierService', () => {
     expect(listRequest.request.method).toBe('GET');
     listRequest.flush([supplier]);
 
+    service.page(1, 25, 'northstar').subscribe((page) => expect(page).toEqual({ items: [supplier], totalCount: 1 }));
+    const pageRequest = http.expectOne((request) => request.url === 'https://api.atlas.test/api/suppliers/page');
+    expect(pageRequest.request.params.keys().sort()).toEqual(['pageIndex', 'pageSize', 'search']);
+    expect(pageRequest.request.params.get('pageIndex')).toBe('1');
+    expect(pageRequest.request.params.get('pageSize')).toBe('25');
+    expect(pageRequest.request.params.get('search')).toBe('northstar');
+    pageRequest.flush({ items: [supplier], totalCount: 1 });
+
     service.create({ name: supplier.name, contactEmail: null }).subscribe();
     const createRequest = http.expectOne('https://api.atlas.test/api/suppliers');
     expect(createRequest.request.method).toBe('POST');

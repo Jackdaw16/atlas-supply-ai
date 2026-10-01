@@ -1,5 +1,7 @@
 :host { display: flex; min-height: 0; min-width: 0; flex: 1; }
 .search-field, .filter-field { margin: 0; --mdc-outlined-text-field-container-shape: 0.75rem; }
+.table-viewport { height: clamp(22rem, calc(100dvh - 27rem), 38rem); overflow: auto; }
+.table-viewport thead { position: sticky; top: 0; z-index: 1; }
 .order-row { transition: background-color 150ms ease; }
 .order-row:hover, .order-row:focus-within { background: rgb(34 211 238 / 0.14); }
 .order-row.is-selected { background: rgb(34 211 238 / 0.2); box-shadow: inset 3px 0 0 rgb(103 232 249); }

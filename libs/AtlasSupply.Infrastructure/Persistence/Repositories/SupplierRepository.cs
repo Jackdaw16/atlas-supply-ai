@@ -15,6 +15,30 @@ public sealed class SupplierRepository(AtlasSupplyDbContext dbContext) : ISuppli
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var suppliers = dbContext.Suppliers.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = $"%{request.Search.Trim()}%";
+            suppliers = suppliers.Where(supplier =>
+                EF.Functions.ILike(supplier.Name, search)
+                || (supplier.ContactEmail != null && EF.Functions.ILike(supplier.ContactEmail, search)));
+        }
+
+        var totalCount = await suppliers.CountAsync(cancellationToken);
+        var items = await suppliers
+            .OrderBy(supplier => supplier.Name)
+            .ThenBy(supplier => supplier.Id)
+            .Skip(request.Page.PageIndex * request.Page.PageSize)
+            .Take(request.Page.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<Supplier>(items, totalCount);
+    }
+
     public Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return dbContext.Suppliers

@@ -1,55 +1,67 @@
-<h2 mat-dialog-title>{{ isEditMode ? 'Edit draft order' : 'Add order' }}</h2>
-
-<form #orderForm="ngForm" mat-dialog-content class="order-form" (ngSubmit)="save(orderForm)">
-  @if (backendErrors().length > 0) {
-    <div class="mb-4 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100" role="alert">
-      @for (error of backendErrors(); track error) { <p class="m-0">{{ error }}</p> }
-    </div>
-  }
-
-  <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
-    <mat-label>Supplier</mat-label>
-    <mat-select name="supplierId" panelClass="atlas-select-panel" [(ngModel)]="supplierId" required [disabled]="isEditMode">
-      @for (supplier of data.suppliers; track supplier.id) {
-        <mat-option [value]="supplier.id">{{ supplier.name }}</mat-option>
-      }
-    </mat-select>
-    @if (orderForm.controls['supplierId']?.hasError('required')) { <mat-error>Select a supplier.</mat-error> }
-  </mat-form-field>
-
-  <div class="mb-2 flex items-center justify-between gap-3">
-    <p class="m-0 text-sm font-semibold text-slate-100">Items</p>
-    <button mat-button type="button" class="atlas-icon-label-control" (click)="addItem()" [disabled]="isSaving()"><mat-icon class="atlas-icon">add</mat-icon>Add item</button>
+<header class="atlas-dialog-header">
+  <div>
+    <h2 mat-dialog-title>{{ isEditMode ? 'Edit draft order' : 'Add order' }}</h2>
+    <p class="atlas-dialog-description">Set the supplier and line items before the order enters the workflow.</p>
   </div>
+  <button mat-button type="button" mat-dialog-close class="atlas-dialog-close" aria-label="Close dialog" [disabled]="isSaving()">
+    <span aria-hidden="true">×</span>
+  </button>
+</header>
 
-  <div class="space-y-3">
-    @for (item of items; track $index; let index = $index) {
-      <div class="item-row rounded-lg border border-slate-700/80 p-3">
-        <div class="flex items-start gap-1">
-          <mat-form-field appearance="outline" class="min-w-0 flex-1" subscriptSizing="dynamic">
-            <mat-label>Description</mat-label>
-            <input matInput [name]="'description-' + index" [(ngModel)]="item.description" required pattern=".*\S.*" maxlength="500" />
-            @if (orderForm.controls['description-' + index]?.invalid) { <mat-error>Enter an item description.</mat-error> }
-          </mat-form-field>
-          <button mat-icon-button type="button" class="atlas-icon-control" aria-label="Remove item" matTooltip="Remove item" (click)="removeItem(index)" [disabled]="items.length === 1 || isSaving()"><mat-icon class="atlas-icon">remove_circle_outline</mat-icon></button>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Quantity</mat-label>
-            <input matInput type="number" [name]="'quantity-' + index" [(ngModel)]="item.quantity" required min="1" step="1" />
-            @if (orderForm.controls['quantity-' + index]?.invalid) { <mat-error>Must be greater than zero.</mat-error> }
-          </mat-form-field>
-          <mat-form-field appearance="outline" subscriptSizing="dynamic">
-            <mat-label>Unit price</mat-label>
-            <input matInput type="number" [name]="'unitPrice-' + index" [(ngModel)]="item.unitPrice" required min="0.01" step="0.01" />
-            @if (orderForm.controls['unitPrice-' + index]?.invalid || !hasMoneyPrecision(item.unitPrice)) { <mat-error>Enter a positive amount with up to 2 decimals.</mat-error> }
-          </mat-form-field>
-        </div>
+<form #orderForm="ngForm" class="order-form" (ngSubmit)="save(orderForm)">
+  <div mat-dialog-content class="atlas-dialog-body order-form__body">
+    @if (backendErrors().length > 0) {
+      <div class="rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100" role="alert">
+        @for (error of backendErrors(); track error) { <p class="m-0">{{ error }}</p> }
       </div>
     }
+
+    <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
+      <mat-label>Supplier</mat-label>
+      <mat-select name="supplierId" panelClass="atlas-select-panel" [(ngModel)]="supplierId" required [disabled]="isEditMode">
+        @for (supplier of data.suppliers; track supplier.id) {
+          <mat-option [value]="supplier.id">{{ supplier.name }}</mat-option>
+        }
+      </mat-select>
+      @if (orderForm.controls['supplierId']?.hasError('required')) { <mat-error>Select a supplier.</mat-error> }
+    </mat-form-field>
+
+    <section class="order-form__items" aria-labelledby="order-items-heading">
+      <div class="flex items-center justify-between gap-3">
+        <p id="order-items-heading" class="m-0 text-sm font-semibold text-slate-100">Items</p>
+        <button mat-button type="button" class="atlas-icon-label-control" (click)="addItem()" [disabled]="isSaving()"><mat-icon class="atlas-icon">add</mat-icon>Add item</button>
+      </div>
+
+      <div class="order-form__item-list">
+        @for (item of items; track $index; let index = $index) {
+          <div class="item-row rounded-lg border border-slate-700/80 p-4">
+            <div class="flex items-start gap-1">
+              <mat-form-field appearance="outline" class="min-w-0 flex-1" subscriptSizing="dynamic">
+                <mat-label>Description</mat-label>
+                <input matInput [name]="'description-' + index" [(ngModel)]="item.description" required pattern=".*\S.*" maxlength="500" />
+                @if (orderForm.controls['description-' + index]?.invalid) { <mat-error>Enter an item description.</mat-error> }
+              </mat-form-field>
+              <button mat-icon-button type="button" class="atlas-icon-control" aria-label="Remove item" matTooltip="Remove item" (click)="removeItem(index)" [disabled]="items.length === 1 || isSaving()"><mat-icon class="atlas-icon">remove_circle_outline</mat-icon></button>
+            </div>
+            <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Quantity</mat-label>
+                <input matInput type="number" [name]="'quantity-' + index" [(ngModel)]="item.quantity" required min="1" step="1" />
+                @if (orderForm.controls['quantity-' + index]?.invalid) { <mat-error>Must be greater than zero.</mat-error> }
+              </mat-form-field>
+              <mat-form-field appearance="outline" subscriptSizing="dynamic">
+                <mat-label>Unit price</mat-label>
+                <input matInput type="number" [name]="'unitPrice-' + index" [(ngModel)]="item.unitPrice" required min="0.01" step="0.01" />
+                @if (orderForm.controls['unitPrice-' + index]?.invalid || !hasMoneyPrecision(item.unitPrice)) { <mat-error>Enter a positive amount with up to 2 decimals.</mat-error> }
+              </mat-form-field>
+            </div>
+          </div>
+        }
+      </div>
+    </section>
   </div>
 
-  <div mat-dialog-actions align="end" class="mt-5! px-0! pb-0!">
+  <div mat-dialog-actions align="end" class="atlas-dialog-footer">
     <button mat-button type="button" mat-dialog-close [disabled]="isSaving()">Cancel</button>
     <button mat-flat-button type="submit" [disabled]="isSaving()">{{ isSaving() ? 'Saving...' : (isEditMode ? 'Save draft' : 'Create order') }}</button>
   </div>

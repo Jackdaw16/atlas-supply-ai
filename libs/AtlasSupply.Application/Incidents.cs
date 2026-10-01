@@ -5,6 +5,16 @@ namespace AtlasSupply.Application;
 public interface IIncidentRepository
 {
     Task AddAsync(Incident incident, CancellationToken cancellationToken);
+
+    Task<IReadOnlyList<Incident>> ListAsync(CancellationToken cancellationToken);
+
+    Task<PagedResult<Incident>> PageAsync(IncidentPageRequest request, CancellationToken cancellationToken);
+
+    Task<Incident?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
+
+    Task<Incident?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken);
+
+    Task UpdateAsync(Incident incident, CancellationToken cancellationToken);
 }
 
 public sealed record CreateIncidentInput(
@@ -21,6 +31,72 @@ public sealed record CreateIncidentResult(
     Guid SupplierId,
     Guid? PurchaseOrderId,
     DateTime CreatedAtUtc);
+
+public sealed record IncidentResult(
+    Guid Id,
+    string Type,
+    string Status,
+    Guid SupplierId,
+    Guid? PurchaseOrderId,
+    string Description,
+    DateTime CreatedAtUtc,
+    DateTime? ResolvedAtUtc,
+    DateTime? ClosedAtUtc);
+
+public enum IncidentLifecycleFilter
+{
+    Open,
+    Resolved
+}
+
+public sealed record IncidentPageRequest(
+    PageRequest Page,
+    string? Search,
+    IncidentStatus? Status,
+    Guid? SupplierId,
+    IncidentType? Type,
+    IncidentLifecycleFilter? Lifecycle);
+
+public sealed class ListIncidents(IIncidentRepository incidentRepository)
+{
+    public async Task<IReadOnlyList<IncidentResult>> ExecuteAsync(CancellationToken cancellationToken)
+    {
+        var incidents = await incidentRepository.ListAsync(cancellationToken);
+        return incidents.Select(IncidentResults.From).ToArray();
+    }
+}
+
+public sealed class PageIncidents(IIncidentRepository incidentRepository)
+{
+    public async Task<PagedResult<IncidentResult>> ExecuteAsync(
+        IncidentPageRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Page.Validate();
+
+        var result = await incidentRepository.PageAsync(request, cancellationToken);
+        return new PagedResult<IncidentResult>(
+            result.Items.Select(IncidentResults.From).ToArray(),
+            result.TotalCount);
+    }
+}
+
+public sealed record GetIncidentByIdInput(Guid IncidentId);
+
+public sealed class GetIncidentById(IIncidentRepository incidentRepository)
+{
+    public async Task<IncidentResult?> ExecuteAsync(
+        GetIncidentByIdInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        IncidentValidation.ValidateId(input.IncidentId);
+
+        var incident = await incidentRepository.GetByIdAsync(input.IncidentId, cancellationToken);
+        return incident is null ? null : IncidentResults.From(incident);
+    }
+}
 
 public sealed class CreateIncident(
     ISupplierRepository supplierRepository,
@@ -96,5 +172,93 @@ public sealed class CreateIncident(
             incident.SupplierId,
             incident.PurchaseOrderId,
             incident.CreatedAtUtc);
+    }
+}
+
+public sealed record UpdateIncidentDescriptionInput(Guid IncidentId, string Description);
+
+public sealed class UpdateIncidentDescription(IIncidentRepository incidentRepository)
+{
+    public async Task<IncidentResult?> ExecuteAsync(
+        UpdateIncidentDescriptionInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        IncidentValidation.ValidateId(input.IncidentId);
+        var description = IncidentValidation.ValidateDescription(input.Description);
+
+        var incident = await incidentRepository.GetForUpdateAsync(input.IncidentId, cancellationToken);
+        if (incident is null)
+        {
+            return null;
+        }
+
+        incident.SetDescription(description);
+        await incidentRepository.UpdateAsync(incident, cancellationToken);
+        return IncidentResults.From(incident);
+    }
+}
+
+public sealed record ResolveIncidentInput(Guid IncidentId);
+
+public sealed class ResolveIncident(IIncidentRepository incidentRepository)
+{
+    public async Task<IncidentResult?> ExecuteAsync(
+        ResolveIncidentInput input,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        IncidentValidation.ValidateId(input.IncidentId);
+
+        var incident = await incidentRepository.GetForUpdateAsync(input.IncidentId, cancellationToken);
+        if (incident is null)
+        {
+            return null;
+        }
+
+        incident.Resolve();
+        await incidentRepository.UpdateAsync(incident, cancellationToken);
+        return IncidentResults.From(incident);
+    }
+}
+
+internal static class IncidentResults
+{
+    internal static IncidentResult From(Incident incident) => new(
+        incident.Id,
+        incident.Type.ToString(),
+        incident.Status.ToString(),
+        incident.SupplierId,
+        incident.PurchaseOrderId,
+        incident.Description,
+        incident.CreatedAtUtc,
+        incident.ResolvedAtUtc,
+        incident.ClosedAtUtc);
+}
+
+internal static class IncidentValidation
+{
+    internal static void ValidateId(Guid id)
+    {
+        if (id == Guid.Empty)
+        {
+            throw new ArgumentException("Incident id is required.", nameof(id));
+        }
+    }
+
+    internal static string ValidateDescription(string description)
+    {
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            throw new ArgumentException("Incident description is required.", nameof(description));
+        }
+
+        var trimmedDescription = description.Trim();
+        if (trimmedDescription.Length > 2000)
+        {
+            throw new ArgumentException("Incident description cannot exceed 2000 characters.", nameof(description));
+        }
+
+        return trimmedDescription;
     }
 }

@@ -21,6 +21,17 @@ describe('PurchaseOrderService', () => {
     expect(listRequest.request.method).toBe('GET');
     listRequest.flush([order]);
 
+    service.page(2, 10, { search: 'northstar', status: 'Approved', supplierId: 'supplier-1', isDelayed: true })
+      .subscribe((page) => expect(page).toEqual({ items: [order], totalCount: 1 }));
+    const pageRequest = http.expectOne((request) => request.url === 'https://api.atlas.test/api/orders/page');
+    expect(pageRequest.request.params.get('pageIndex')).toBe('2');
+    expect(pageRequest.request.params.get('pageSize')).toBe('10');
+    expect(pageRequest.request.params.get('search')).toBe('northstar');
+    expect(pageRequest.request.params.get('status')).toBe('Approved');
+    expect(pageRequest.request.params.get('supplierId')).toBe('supplier-1');
+    expect(pageRequest.request.params.get('isDelayed')).toBe('true');
+    pageRequest.flush({ items: [order], totalCount: 1 });
+
     service.updateItems(order.id, { items: [] }).subscribe();
     const updateRequest = http.expectOne('https://api.atlas.test/api/orders/order-1/items');
     expect(updateRequest.request.method).toBe('PUT');
