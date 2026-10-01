@@ -1,0 +1,53 @@
+<h2 mat-dialog-title>{{ isEditMode ? 'Edit incident description' : 'Create incident' }}</h2>
+
+<form #incidentForm="ngForm" mat-dialog-content class="incident-form" (ngSubmit)="save(incidentForm)">
+  @if (backendErrors().length > 0) {
+    <div class="mb-4 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2 text-sm text-red-100" role="alert">
+      @for (error of backendErrors(); track error) { <p class="m-0">{{ error }}</p> }
+    </div>
+  }
+
+  @if (isEditMode) {
+    <div class="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-700/80 bg-slate-950/28 p-3 text-xs">
+      <span class="text-slate-400">Type<strong class="mt-1 block text-slate-100">{{ data.incident!.type }}</strong></span>
+      <span class="text-slate-400">Supplier<strong class="mt-1 block text-slate-100">{{ supplierName(data.incident!.supplierId) }}</strong></span>
+      <span class="col-span-2 text-slate-400">Purchase order<strong class="mt-1 block font-mono text-slate-100">{{ data.incident!.purchaseOrderId ?? '—' }}</strong></span>
+    </div>
+  } @else {
+    <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
+      <mat-label>Supplier</mat-label>
+      <mat-select name="supplierId" panelClass="atlas-select-panel" [ngModel]="supplierId()" (ngModelChange)="selectSupplier($event)" required>
+        @for (supplier of data.suppliers; track supplier.id) { <mat-option [value]="supplier.id">{{ supplier.name }}</mat-option> }
+      </mat-select>
+      @if (incidentForm.controls['supplierId']?.hasError('required')) { <mat-error>Select a supplier.</mat-error> }
+    </mat-form-field>
+
+    <div class="grid gap-3 sm:grid-cols-2">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Incident type</mat-label>
+        <mat-select name="type" panelClass="atlas-select-panel" [(ngModel)]="type" required>
+          @for (incidentType of incidentTypes; track incidentType) { <mat-option [value]="incidentType">{{ incidentType }}</mat-option> }
+        </mat-select>
+      </mat-form-field>
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-label>Purchase order</mat-label>
+        <mat-select name="purchaseOrderId" panelClass="atlas-select-panel" [ngModel]="purchaseOrderId()" (ngModelChange)="purchaseOrderId.set($event)" [disabled]="!supplierId()">
+          <mat-option value="">No purchase order</mat-option>
+          @for (purchaseOrder of availablePurchaseOrders(); track purchaseOrder.id) { <mat-option [value]="purchaseOrder.id">{{ shortId(purchaseOrder.id) }} · {{ purchaseOrder.status }}</mat-option> }
+        </mat-select>
+      </mat-form-field>
+    </div>
+  }
+
+  <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
+    <mat-label>Description</mat-label>
+    <textarea matInput name="description" [(ngModel)]="description" required pattern=".*\S.*" maxlength="2000" rows="5"></textarea>
+    <mat-hint align="end">{{ description.length }}/2000</mat-hint>
+    @if (incidentForm.controls['description']?.invalid) { <mat-error>Enter an incident description.</mat-error> }
+  </mat-form-field>
+
+  <div mat-dialog-actions align="end" class="mt-5! px-0! pb-0!">
+    <button mat-button type="button" mat-dialog-close [disabled]="isSaving()">Cancel</button>
+    <button mat-flat-button type="submit" [disabled]="isSaving()">{{ isSaving() ? 'Saving...' : (isEditMode ? 'Save description' : 'Create incident') }}</button>
+  </div>
+</form>

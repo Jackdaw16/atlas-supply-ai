@@ -395,6 +395,42 @@ public static class ApiEndpoints
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
+        app.MapGet("/api/incidents", async (
+            ListIncidents listIncidents,
+            CancellationToken cancellationToken) =>
+        {
+            var incidents = await listIncidents.ExecuteAsync(cancellationToken);
+            return Results.Ok(incidents);
+        })
+            .WithName("ListIncidents")
+            .WithTags("Incidents")
+            .RequireAuthorization()
+            .Produces<IReadOnlyList<IncidentResult>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapGet("/api/incidents/{id}", async (
+            string id,
+            GetIncidentById getIncidentById,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseIncidentId(id, out var incidentId))
+            {
+                return InvalidIncidentId();
+            }
+
+            var incident = await getIncidentById.ExecuteAsync(
+                new GetIncidentByIdInput(incidentId),
+                cancellationToken);
+            return incident is null ? IncidentNotFound() : Results.Ok(incident);
+        })
+            .WithName("GetIncidentById")
+            .WithTags("Incidents")
+            .RequireAuthorization()
+            .Produces<IncidentResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
         app.MapPost("/api/incidents", async (
             CreateIncidentRequest? request,
             CreateIncident createIncident,
@@ -418,9 +454,53 @@ public static class ApiEndpoints
         })
             .WithName("CreateIncident")
             .WithTags("Incidents")
+            .RequireAuthorization()
             .Accepts<CreateIncidentRequest>("application/json")
             .Produces<CreateIncidentResult>(StatusCodes.Status201Created)
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapPut("/api/incidents/{id}/description", async (
+            string id,
+            UpdateIncidentDescriptionRequest? request,
+            UpdateIncidentDescription updateIncidentDescription,
+            CancellationToken cancellationToken) =>
+        {
+            if (!TryParseIncidentId(id, out var incidentId))
+            {
+                return InvalidIncidentId();
+            }
+
+            var validationErrors = ValidateUpdateIncidentDescriptionRequest(request);
+            if (validationErrors.Count > 0)
+            {
+                return Results.ValidationProblem(validationErrors);
+            }
+
+            var incident = await updateIncidentDescription.ExecuteAsync(
+                new UpdateIncidentDescriptionInput(incidentId, request!.Description!),
+                cancellationToken);
+            return incident is null ? IncidentNotFound() : Results.Ok(incident);
+        })
+            .WithName("UpdateIncidentDescription")
+            .WithTags("Incidents")
+            .RequireAuthorization()
+            .Accepts<UpdateIncidentDescriptionRequest>("application/json")
+            .Produces<IncidentResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapPost("/api/incidents/{id}/resolve", (string id, ResolveIncident resolveIncident, CancellationToken cancellationToken) =>
+            ExecuteIncidentTransition(id, incidentId => resolveIncident.ExecuteAsync(new ResolveIncidentInput(incidentId), cancellationToken)))
+            .WithName("ResolveIncident")
+            .WithTags("Incidents")
+            .RequireAuthorization()
+            .Produces<IncidentResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
@@ -494,11 +574,35 @@ public static class ApiEndpoints
         return errors;
     }
 
+    private static Dictionary<string, string[]> ValidateUpdateIncidentDescriptionRequest(UpdateIncidentDescriptionRequest? request)
+    {
+        var errors = new Dictionary<string, string[]>();
+        if (request is null)
+        {
+            errors["request"] = ["Request body is required."];
+            return errors;
+        }
+
+        if (string.IsNullOrWhiteSpace(request.Description))
+        {
+            errors["description"] = ["Incident description is required."];
+        }
+        else if (request.Description.Trim().Length > 2000)
+        {
+            errors["description"] = ["Incident description cannot exceed 2000 characters."];
+        }
+
+        return errors;
+    }
+
     private static bool TryParseSupplierId(string id, out Guid supplierId) =>
         Guid.TryParse(id, out supplierId) && supplierId != Guid.Empty;
 
     private static bool TryParsePurchaseOrderId(string id, out Guid purchaseOrderId) =>
         Guid.TryParse(id, out purchaseOrderId) && purchaseOrderId != Guid.Empty;
+
+    private static bool TryParseIncidentId(string id, out Guid incidentId) =>
+        Guid.TryParse(id, out incidentId) && incidentId != Guid.Empty;
 
     private static IResult InvalidSupplierId() => Results.ValidationProblem(new Dictionary<string, string[]>
     {
@@ -518,6 +622,15 @@ public static class ApiEndpoints
         statusCode: StatusCodes.Status404NotFound,
         title: "Purchase order not found.");
 
+    private static IResult InvalidIncidentId() => Results.ValidationProblem(new Dictionary<string, string[]>
+    {
+        ["id"] = ["Incident id must be a non-empty GUID."]
+    });
+
+    private static IResult IncidentNotFound() => Results.Problem(
+        statusCode: StatusCodes.Status404NotFound,
+        title: "Incident not found.");
+
     private static async Task<IResult> ExecutePurchaseOrderTransition(
         string id,
         Func<Guid, Task<PurchaseOrderResult?>> execute)
@@ -529,6 +642,19 @@ public static class ApiEndpoints
 
         var purchaseOrder = await execute(purchaseOrderId);
         return purchaseOrder is null ? PurchaseOrderNotFound() : Results.Ok(purchaseOrder);
+    }
+
+    private static async Task<IResult> ExecuteIncidentTransition(
+        string id,
+        Func<Guid, Task<IncidentResult?>> execute)
+    {
+        if (!TryParseIncidentId(id, out var incidentId))
+        {
+            return InvalidIncidentId();
+        }
+
+        var incident = await execute(incidentId);
+        return incident is null ? IncidentNotFound() : Results.Ok(incident);
     }
 
     private static Dictionary<string, string[]> ValidateCreatePurchaseOrderRequest(CreatePurchaseOrderRequest? request)

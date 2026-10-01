@@ -37,6 +37,12 @@
                 <span matListItemTitle>Orders</span>
               </a>
             </li>
+            <li>
+              <a mat-list-item routerLink="/incidents" routerLinkActive="drawer-link-active" (click)="closeNavigationOnHandset()">
+                <mat-icon matListItemIcon class="atlas-icon">report_problem</mat-icon>
+                <span matListItemTitle>Incidents</span>
+              </a>
+            </li>
           </ul>
         </mat-nav-list>
 

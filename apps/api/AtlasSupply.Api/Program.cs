@@ -56,7 +56,11 @@ builder.Services.AddScoped<SubmitPurchaseOrder>();
 builder.Services.AddScoped<ApprovePurchaseOrder>();
 builder.Services.AddScoped<MarkPurchaseOrderReceived>();
 builder.Services.AddScoped<CancelPurchaseOrder>();
+builder.Services.AddScoped<ListIncidents>();
+builder.Services.AddScoped<GetIncidentById>();
 builder.Services.AddScoped<CreateIncident>();
+builder.Services.AddScoped<UpdateIncidentDescription>();
+builder.Services.AddScoped<ResolveIncident>();
 builder.Services.AddScoped<Login>();
 
 var app = builder.Build();

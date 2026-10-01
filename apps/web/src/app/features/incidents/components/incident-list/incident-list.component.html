@@ -1,0 +1,95 @@
+<section class="incident-workspace flex min-h-0 flex-1 flex-col" aria-labelledby="incident-heading">
+  <header class="flex shrink-0 flex-col gap-4 border-b border-slate-800/70 bg-[#0d1726] px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+    <div>
+      <p class="m-0 text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-300">INCIDENT MANAGEMENT</p>
+      <h1 id="incident-heading" class="mb-0 mt-1 text-xl font-semibold tracking-tight text-slate-100">Manage operational incidents</h1>
+    </div>
+    <button mat-flat-button type="button" class="atlas-icon-label-control shrink-0" (click)="createIncident()" [disabled]="isSaving() || suppliers().length === 0">
+      <mat-icon class="atlas-icon">add</mat-icon>
+      Create incident
+    </button>
+  </header>
+
+  <div class="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
+    @if (errorMessage(); as error) {
+      <div class="mb-5 flex items-start justify-between gap-3 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2.5 text-sm text-red-100" role="alert">
+        <span>{{ error }}</span>
+        <button mat-icon-button type="button" class="atlas-icon-control" aria-label="Retry loading incidents" (click)="reload()"><mat-icon class="atlas-icon">refresh</mat-icon></button>
+      </div>
+    }
+
+    <div class="mb-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+      <div class="grid gap-3 sm:grid-cols-2 xl:flex xl:items-center">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field w-full xl:w-68">
+          <mat-label>Search incidents</mat-label>
+          <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Description or supplier" />
+          <mat-icon matSuffix class="atlas-icon">search</mat-icon>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field w-full xl:w-40">
+          <mat-label>Status</mat-label>
+          <mat-select panelClass="atlas-select-panel" [ngModel]="statusFilter()" (ngModelChange)="statusFilter.set($event)"><mat-option value="all">All</mat-option>@for (status of statusOptions; track status) { <mat-option [value]="status">{{ status }}</mat-option> }</mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field w-full xl:w-48">
+          <mat-label>Supplier</mat-label>
+          <mat-select panelClass="atlas-select-panel" [ngModel]="supplierFilter()" (ngModelChange)="supplierFilter.set($event)"><mat-option value="all">All suppliers</mat-option>@for (supplier of suppliers(); track supplier.id) { <mat-option [value]="supplier.id">{{ supplier.name }}</mat-option> }</mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field w-full xl:w-40">
+          <mat-label>Type</mat-label>
+          <mat-select panelClass="atlas-select-panel" [ngModel]="typeFilter()" (ngModelChange)="typeFilter.set($event)"><mat-option value="all">All types</mat-option>@for (type of typeOptions; track type) { <mat-option [value]="type">{{ type }}</mat-option> }</mat-select>
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field w-full xl:w-36">
+          <mat-label>Open / resolved</mat-label>
+          <mat-select panelClass="atlas-select-panel" [ngModel]="lifecycleFilter()" (ngModelChange)="lifecycleFilter.set($event)"><mat-option value="all">All</mat-option><mat-option value="open">Open</mat-option><mat-option value="resolved">Resolved</mat-option></mat-select>
+        </mat-form-field>
+      </div>
+      <p class="m-0 text-xs text-slate-400">{{ filteredIncidents().length }} incident{{ filteredIncidents().length === 1 ? '' : 's' }}</p>
+    </div>
+
+    @if (isLoading()) {
+      <div class="flex min-h-56 items-center justify-center gap-3 text-sm text-slate-400" aria-live="polite"><mat-spinner diameter="22" />Loading incidents...</div>
+    } @else if (filteredIncidents().length === 0) {
+      <div class="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950/20 px-5 text-center">
+        <mat-icon class="atlas-icon mb-3 text-slate-500">report_problem</mat-icon>
+        <p class="m-0 text-sm font-medium text-slate-200">No incidents found</p>
+        <p class="mb-0 mt-1 text-sm text-slate-400">Adjust the filters or create an incident to get started.</p>
+      </div>
+    } @else {
+      <div class="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_23rem]">
+        <div class="overflow-hidden rounded-xl border border-slate-700/60 bg-slate-950/25">
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[66rem] border-collapse text-left">
+              <thead class="bg-slate-900/75 text-[11px] font-bold uppercase tracking-[0.13em] text-slate-400"><tr><th class="px-4 py-3">Incident</th><th class="px-4 py-3">Type</th><th class="px-4 py-3">Supplier</th><th class="px-4 py-3">Purchase order</th><th class="px-4 py-3">Status</th><th class="px-4 py-3">Created</th><th class="px-4 py-3 text-right">Actions</th></tr></thead>
+              <tbody class="divide-y divide-slate-800/90 text-sm">
+                @for (incident of filteredIncidents(); track incident.id) {
+                  <tr class="incident-row cursor-pointer text-slate-200" [class.is-selected]="selectedIncident()?.id === incident.id" (click)="selectIncident(incident)">
+                    <td class="max-w-80 px-4 py-3.5"><span class="line-clamp-2 font-medium">{{ incident.description }}</span><span class="mt-1 block font-mono text-[11px] text-slate-500">{{ incident.id }}</span></td>
+                    <td class="px-4 py-3.5 text-slate-300">{{ incident.type }}</td>
+                    <td class="px-4 py-3.5 text-slate-300">{{ supplierName(incident.supplierId) }}</td>
+                    <td class="px-4 py-3.5 font-mono text-xs text-slate-400">{{ incident.purchaseOrderId ? shortId(incident.purchaseOrderId) : '—' }}</td>
+                    <td class="px-4 py-3.5"><span class="status-pill" [class]="'status-' + incident.status.toLowerCase()">{{ incident.status }}</span></td>
+                    <td class="px-4 py-3.5 text-slate-400">{{ formatDate(incident.createdAtUtc) }}</td>
+                    <td class="px-4 py-3.5 text-right" (click)="$event.stopPropagation()"><div class="incident-actions inline-flex items-center justify-end gap-1 whitespace-nowrap">
+                      <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="'View incident ' + shortId(incident.id)" [matTooltip]="'View incident ' + shortId(incident.id)" (click)="selectIncident(incident)"><mat-icon class="atlas-icon">visibility</mat-icon></button>
+                      <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="'Edit incident ' + shortId(incident.id)" matTooltip="Edit description" [disabled]="isSaving()" (click)="editIncident(incident)"><mat-icon class="atlas-icon">edit</mat-icon></button>
+                      @if (canResolve(incident)) { <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="'Resolve incident ' + shortId(incident.id)" matTooltip="Resolve incident" [disabled]="isSaving()" (click)="resolveIncident(incident)"><mat-icon class="atlas-icon">task_alt</mat-icon></button> }
+                    </div></td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <aside class="h-fit rounded-xl border border-cyan-300/10 bg-slate-950/35 p-4" aria-live="polite">
+          <p class="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Incident details</p>
+          @if (selectedIncident(); as incident) {
+            <h2 class="mb-1 mt-3 font-mono text-sm font-semibold text-slate-100">{{ incident.id }}</h2>
+            <p class="m-0 text-sm leading-6 text-slate-300">{{ incident.description }}</p>
+            <div class="mt-4 grid grid-cols-2 gap-3 text-xs"><span class="text-slate-400">Type<strong class="mt-1 block text-slate-100">{{ incident.type }}</strong></span><span class="text-slate-400">Status<strong class="mt-1 block text-slate-100">{{ incident.status }}</strong></span><span class="text-slate-400">Supplier<strong class="mt-1 block text-slate-100">{{ supplierName(incident.supplierId) }}</strong></span><span class="text-slate-400">Purchase order<strong class="mt-1 block font-mono text-slate-100">{{ incident.purchaseOrderId ? shortId(incident.purchaseOrderId) : '—' }}</strong></span><span class="text-slate-400">Created<strong class="mt-1 block text-slate-100">{{ formatDate(incident.createdAtUtc) }}</strong></span><span class="text-slate-400">Resolved<strong class="mt-1 block text-slate-100">{{ formatDate(incident.resolvedAtUtc) }}</strong></span><span class="text-slate-400">Closed<strong class="mt-1 block text-slate-100">{{ formatDate(incident.closedAtUtc) }}</strong></span></div>
+            <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-800 pt-3"><button mat-button type="button" class="atlas-icon-label-control" [disabled]="isSaving()" (click)="editIncident(incident)"><mat-icon class="atlas-icon">edit</mat-icon>Edit description</button>@if (canResolve(incident)) { <button mat-button type="button" class="atlas-icon-label-control" [disabled]="isSaving()" (click)="resolveIncident(incident)"><mat-icon class="atlas-icon">task_alt</mat-icon>Resolve</button> }</div>
+          } @else { <p class="mb-0 mt-3 text-sm leading-6 text-slate-400">Select an incident to review its supplier, linked purchase order, status, and timestamps.</p> }
+        </aside>
+      </div>
+    }
+  </div>
+</section>
