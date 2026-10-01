@@ -21,4 +21,19 @@ public sealed class SupplierRepository(AtlasSupplyDbContext dbContext) : ISuppli
             .AsNoTracking()
             .SingleOrDefaultAsync(supplier => supplier.Id == id, cancellationToken);
     }
+
+    public Task<Supplier?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return dbContext.Suppliers
+            .SingleOrDefaultAsync(supplier => supplier.Id == id, cancellationToken);
+    }
+
+    public async Task CreateAsync(Supplier supplier, CancellationToken cancellationToken)
+    {
+        await dbContext.Suppliers.AddAsync(supplier, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task UpdateAsync(Supplier supplier, CancellationToken cancellationToken) =>
+        dbContext.SaveChangesAsync(cancellationToken);
 }

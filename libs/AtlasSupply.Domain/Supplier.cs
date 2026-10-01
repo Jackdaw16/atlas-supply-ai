@@ -1,3 +1,5 @@
+using System.Net.Mail;
+
 namespace AtlasSupply.Domain;
 
 public sealed class Supplier
@@ -43,7 +45,15 @@ public sealed class Supplier
 
         var normalized = contactEmail.Trim();
 
-        if (!normalized.Contains('@'))
+        try
+        {
+            var emailAddress = new MailAddress(normalized);
+            if (!string.Equals(emailAddress.Address, normalized, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException("Contact email is invalid.", nameof(contactEmail));
+            }
+        }
+        catch (FormatException)
         {
             throw new ArgumentException("Contact email is invalid.", nameof(contactEmail));
         }

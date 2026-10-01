@@ -10,7 +10,25 @@ public sealed class PurchaseOrderRepository(AtlasSupplyDbContext dbContext) : IP
     {
         return dbContext.PurchaseOrders
             .AsNoTracking()
+            .Include(purchaseOrder => purchaseOrder.Items)
             .SingleOrDefaultAsync(purchaseOrder => purchaseOrder.Id == id, cancellationToken);
+    }
+
+    public Task<PurchaseOrder?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return dbContext.PurchaseOrders
+            .Include(purchaseOrder => purchaseOrder.Items)
+            .SingleOrDefaultAsync(purchaseOrder => purchaseOrder.Id == id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PurchaseOrder>> ListAsync(CancellationToken cancellationToken)
+    {
+        return await dbContext.PurchaseOrders
+            .AsNoTracking()
+            .Include(purchaseOrder => purchaseOrder.Items)
+            .OrderByDescending(purchaseOrder => purchaseOrder.CreatedAtUtc)
+            .ThenBy(purchaseOrder => purchaseOrder.Id)
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<PurchaseOrder>> ListOutstandingApprovedAsync(
@@ -26,4 +44,13 @@ public sealed class PurchaseOrderRepository(AtlasSupplyDbContext dbContext) : IP
             .ThenBy(purchaseOrder => purchaseOrder.Id)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task CreateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken)
+    {
+        await dbContext.PurchaseOrders.AddAsync(purchaseOrder, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task UpdateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken) =>
+        dbContext.SaveChangesAsync(cancellationToken);
 }

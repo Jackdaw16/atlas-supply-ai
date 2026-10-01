@@ -43,7 +43,19 @@ builder.Services.AddOpenApi(options => options.AddDocumentTransformer<BearerSecu
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddScoped<ListSuppliers>();
 builder.Services.AddScoped<GetSupplierById>();
+builder.Services.AddScoped<CreateSupplier>();
+builder.Services.AddScoped<UpdateSupplier>();
+builder.Services.AddScoped<ActivateSupplier>();
+builder.Services.AddScoped<DeactivateSupplier>();
 builder.Services.AddScoped<GetDelayedOrders>();
+builder.Services.AddScoped<ListPurchaseOrders>();
+builder.Services.AddScoped<GetPurchaseOrderById>();
+builder.Services.AddScoped<CreatePurchaseOrder>();
+builder.Services.AddScoped<UpdatePurchaseOrderDraftItems>();
+builder.Services.AddScoped<SubmitPurchaseOrder>();
+builder.Services.AddScoped<ApprovePurchaseOrder>();
+builder.Services.AddScoped<MarkPurchaseOrderReceived>();
+builder.Services.AddScoped<CancelPurchaseOrder>();
 builder.Services.AddScoped<CreateIncident>();
 builder.Services.AddScoped<Login>();
 

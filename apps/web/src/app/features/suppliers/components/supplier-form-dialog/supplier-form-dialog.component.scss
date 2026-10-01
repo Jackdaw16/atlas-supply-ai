@@ -1,0 +1,12 @@
+.supplier-form {
+  display: block;
+  min-width: min(100%, 22rem);
+}
+
+h2[mat-dialog-title] {
+  color: rgb(248 250 252);
+}
+
+mat-form-field + mat-form-field {
+  margin-top: 1rem;
+}
