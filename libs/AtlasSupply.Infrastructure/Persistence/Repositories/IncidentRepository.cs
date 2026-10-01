@@ -23,6 +23,54 @@ public sealed class IncidentRepository(AtlasSupplyDbContext dbContext) : IIncide
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<PagedResult<Incident>> PageAsync(IncidentPageRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var incidents = dbContext.Incidents.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = $"%{request.Search.Trim()}%";
+            incidents = incidents.Where(incident =>
+                EF.Functions.ILike(incident.Id.ToString(), search)
+                || EF.Functions.ILike(incident.Description, search)
+                || dbContext.Suppliers.Any(supplier =>
+                    supplier.Id == incident.SupplierId && EF.Functions.ILike(supplier.Name, search)));
+        }
+
+        if (request.Status is { } status)
+        {
+            incidents = incidents.Where(incident => incident.Status == status);
+        }
+
+        if (request.SupplierId is { } supplierId)
+        {
+            incidents = incidents.Where(incident => incident.SupplierId == supplierId);
+        }
+
+        if (request.Type is { } type)
+        {
+            incidents = incidents.Where(incident => incident.Type == type);
+        }
+
+        if (request.Lifecycle is { } lifecycle)
+        {
+            incidents = lifecycle == IncidentLifecycleFilter.Open
+                ? incidents.Where(incident => incident.Status == IncidentStatus.Open)
+                : incidents.Where(incident => incident.Status == IncidentStatus.Resolved);
+        }
+
+        var totalCount = await incidents.CountAsync(cancellationToken);
+        var items = await incidents
+            .OrderByDescending(incident => incident.CreatedAtUtc)
+            .ThenBy(incident => incident.Id)
+            .Skip(request.Page.PageIndex * request.Page.PageSize)
+            .Take(request.Page.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<Incident>(items, totalCount);
+    }
+
     public Task<Incident?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return dbContext.Incidents

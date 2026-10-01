@@ -31,6 +31,49 @@ public sealed class PurchaseOrderRepository(AtlasSupplyDbContext dbContext) : IP
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<PagedResult<PurchaseOrder>> PageAsync(PurchaseOrderPageRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var purchaseOrders = dbContext.PurchaseOrders.AsNoTracking().AsQueryable();
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = $"%{request.Search.Trim()}%";
+            purchaseOrders = purchaseOrders.Where(purchaseOrder =>
+                EF.Functions.ILike(purchaseOrder.Id.ToString(), search)
+                || dbContext.Suppliers.Any(supplier =>
+                    supplier.Id == purchaseOrder.SupplierId && EF.Functions.ILike(supplier.Name, search)));
+        }
+
+        if (request.Status is { } status)
+        {
+            purchaseOrders = purchaseOrders.Where(purchaseOrder => purchaseOrder.Status == status);
+        }
+
+        if (request.SupplierId is { } supplierId)
+        {
+            purchaseOrders = purchaseOrders.Where(purchaseOrder => purchaseOrder.SupplierId == supplierId);
+        }
+
+        if (request.IsDelayed is { } isDelayed)
+        {
+            purchaseOrders = isDelayed
+                ? purchaseOrders.Where(purchaseOrder => purchaseOrder.Status == PurchaseOrderStatus.Approved && purchaseOrder.ApprovedAtUtc != null && purchaseOrder.ReceivedAtUtc == null)
+                : purchaseOrders.Where(purchaseOrder => purchaseOrder.Status != PurchaseOrderStatus.Approved || purchaseOrder.ApprovedAtUtc == null || purchaseOrder.ReceivedAtUtc != null);
+        }
+
+        var totalCount = await purchaseOrders.CountAsync(cancellationToken);
+        var items = await purchaseOrders
+            .Include(purchaseOrder => purchaseOrder.Items)
+            .OrderByDescending(purchaseOrder => purchaseOrder.CreatedAtUtc)
+            .ThenBy(purchaseOrder => purchaseOrder.Id)
+            .Skip(request.Page.PageIndex * request.Page.PageSize)
+            .Take(request.Page.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<PurchaseOrder>(items, totalCount);
+    }
+
     public async Task<IReadOnlyList<PurchaseOrder>> ListOutstandingApprovedAsync(
         CancellationToken cancellationToken)
     {

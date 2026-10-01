@@ -6,6 +6,8 @@ public interface ISupplierRepository
 {
     Task<IReadOnlyList<Supplier>> ListAsync(CancellationToken cancellationToken);
 
+    Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken);
+
     Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 
     Task<Supplier?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken);
@@ -20,6 +22,8 @@ public sealed record SupplierResult(
     string Name,
     string? ContactEmail,
     bool IsActive);
+
+public sealed record SupplierPageRequest(PageRequest Page, string? Search);
 
 public sealed class ListSuppliers(ISupplierRepository supplierRepository)
 {
@@ -55,6 +59,22 @@ public sealed class GetSupplierById(ISupplierRepository supplierRepository)
         var supplier = await supplierRepository.GetByIdAsync(input.SupplierId, cancellationToken);
 
         return supplier is null ? null : SupplierResults.From(supplier);
+    }
+}
+
+public sealed class PageSuppliers(ISupplierRepository supplierRepository)
+{
+    public async Task<PagedResult<SupplierResult>> ExecuteAsync(
+        SupplierPageRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Page.Validate();
+
+        var result = await supplierRepository.PageAsync(request, cancellationToken);
+        return new PagedResult<SupplierResult>(
+            result.Items.Select(SupplierResults.From).ToArray(),
+            result.TotalCount);
     }
 }
 

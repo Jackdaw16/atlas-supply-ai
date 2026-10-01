@@ -1,12 +1,19 @@
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  min-height: 0;
+}
+
 .supplier-form {
-  display: block;
-  min-width: min(100%, 22rem);
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
-h2[mat-dialog-title] {
-  color: rgb(248 250 252);
-}
-
-mat-form-field + mat-form-field {
-  margin-top: 1rem;
+.supplier-form__body {
+  display: grid;
+  gap: 1.25rem;
 }

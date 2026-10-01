@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -16,8 +16,9 @@ import { PurchaseOrder } from '../../../orders/models/purchase-order.models';
 import { PurchaseOrderService } from '../../../orders/services/purchase-order.service';
 import { Supplier } from '../../../suppliers/models/supplier.models';
 import { SupplierService } from '../../../suppliers/services/supplier.service';
+import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/components/paginator/atlas-paginator.component';
 import { Incident, IncidentStatus, IncidentType } from '../../models/incident.models';
-import { IncidentService } from '../../services/incident.service';
+import { IncidentPageQuery, IncidentService } from '../../services/incident.service';
 import { IncidentFormDialogComponent } from '../incident-form-dialog/incident-form-dialog.component';
 
 @Component({
@@ -33,7 +34,8 @@ import { IncidentFormDialogComponent } from '../incident-form-dialog/incident-fo
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
-    MatTooltipModule
+    MatTooltipModule,
+    AtlasPaginatorComponent
   ],
   templateUrl: './incident-list.component.html',
   styleUrl: './incident-list.component.scss'
@@ -58,23 +60,11 @@ export class IncidentListComponent {
   protected readonly isLoading = signal(true);
   protected readonly isSaving = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
+  protected readonly totalCount = signal(0);
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(25);
   protected readonly statusOptions: IncidentStatus[] = ['Open', 'InProgress', 'Resolved', 'Closed', 'Cancelled'];
   protected readonly typeOptions: IncidentType[] = ['Delay', 'QualityIssue', 'ShortShipment', 'DamagedGoods', 'Other'];
-  protected readonly filteredIncidents = computed(() => {
-    const search = this.search().trim().toLocaleLowerCase();
-    return this.incidents().filter((incident) => {
-      const matchesSearch = !search
-        || incident.id.toLocaleLowerCase().includes(search)
-        || incident.description.toLocaleLowerCase().includes(search)
-        || this.supplierName(incident.supplierId).toLocaleLowerCase().includes(search);
-      const matchesStatus = this.statusFilter() === 'all' || incident.status === this.statusFilter();
-      const matchesSupplier = this.supplierFilter() === 'all' || incident.supplierId === this.supplierFilter();
-      const matchesType = this.typeFilter() === 'all' || incident.type === this.typeFilter();
-      const matchesLifecycle = this.lifecycleFilter() === 'all'
-        || (this.lifecycleFilter() === 'open' ? incident.status === 'Open' : incident.status === 'Resolved');
-      return matchesSearch && matchesStatus && matchesSupplier && matchesType && matchesLifecycle;
-    });
-  });
 
   constructor() {
     this.reload();
@@ -84,17 +74,18 @@ export class IncidentListComponent {
     this.isLoading.set(true);
     this.errorMessage.set(null);
     forkJoin({
-      incidents: this.incidentService.list(),
+      page: this.incidentService.page(this.pageIndex(), this.pageSize(), this.pageQuery()),
       suppliers: this.supplierService.list().pipe(catchError(() => of([]))),
       purchaseOrders: this.purchaseOrderService.list().pipe(catchError(() => of([])))
     })
       .pipe(takeUntilDestroyed(this.destroyRef), finalize(() => this.isLoading.set(false)))
       .subscribe({
-        next: ({ incidents, suppliers, purchaseOrders }) => {
-          this.incidents.set(incidents);
+        next: ({ page, suppliers, purchaseOrders }) => {
+          this.incidents.set(page.items);
+          this.totalCount.set(page.totalCount);
           this.suppliers.set(suppliers);
           this.purchaseOrders.set(purchaseOrders);
-          this.selectedIncident.set(selectedIncidentId ? incidents.find((incident) => incident.id === selectedIncidentId) ?? null : null);
+          this.selectedIncident.set(selectedIncidentId ? page.items.find((incident) => incident.id === selectedIncidentId) ?? null : null);
         },
         error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'load incidents'))
       });
@@ -110,6 +101,37 @@ export class IncidentListComponent {
 
   protected selectIncident(incident: Incident): void {
     this.selectedIncident.set(incident);
+  }
+
+  protected updateSearch(search: string): void {
+    this.search.set(search);
+    this.resetPageAndReload();
+  }
+
+  protected updateStatusFilter(status: IncidentStatus | 'all'): void {
+    this.statusFilter.set(status);
+    this.resetPageAndReload();
+  }
+
+  protected updateSupplierFilter(supplierId: string): void {
+    this.supplierFilter.set(supplierId);
+    this.resetPageAndReload();
+  }
+
+  protected updateTypeFilter(type: IncidentType | 'all'): void {
+    this.typeFilter.set(type);
+    this.resetPageAndReload();
+  }
+
+  protected updateLifecycleFilter(filter: 'all' | 'open' | 'resolved'): void {
+    this.lifecycleFilter.set(filter);
+    this.resetPageAndReload();
+  }
+
+  protected changePage(event: PaginationChange): void {
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.reload();
   }
 
   protected resolveIncident(incident: Incident): void {
@@ -163,6 +185,25 @@ export class IncidentListComponent {
       },
       error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'update the incident'))
     });
+  }
+
+  private pageQuery(): IncidentPageQuery {
+    const status = this.statusFilter();
+    const supplierId = this.supplierFilter();
+    const type = this.typeFilter();
+    const lifecycle = this.lifecycleFilter();
+    return {
+      search: this.search(),
+      status: status === 'all' ? undefined : status,
+      supplierId: supplierId === 'all' ? undefined : supplierId,
+      type: type === 'all' ? undefined : type,
+      lifecycle: lifecycle === 'all' ? undefined : lifecycle
+    };
+  }
+
+  private resetPageAndReload(): void {
+    this.pageIndex.set(0);
+    this.reload();
   }
 
   private toErrorMessage(error: unknown, action: string): string {

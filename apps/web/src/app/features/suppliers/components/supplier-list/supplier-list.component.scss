@@ -10,6 +10,17 @@
   --mdc-outlined-text-field-container-shape: 0.75rem;
 }
 
+.table-viewport {
+  height: clamp(22rem, calc(100dvh - 25rem), 38rem);
+  overflow: auto;
+}
+
+.table-viewport thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
 .supplier-row {
   transition: background-color 150ms ease;
 }

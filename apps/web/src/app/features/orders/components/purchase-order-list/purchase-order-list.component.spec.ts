@@ -3,7 +3,7 @@ import { MatDialog } from '@angular/material/dialog';
 import { MatSnackBar } from '@angular/material/snack-bar';
 import { provideNoopAnimations } from '@angular/platform-browser/animations';
 import { of, throwError } from 'rxjs';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SupplierService } from '../../../suppliers/services/supplier.service';
 import { PurchaseOrder } from '../../models/purchase-order.models';
 import { PurchaseOrderService } from '../../services/purchase-order.service';
@@ -12,43 +12,37 @@ import { PurchaseOrderListComponent } from './purchase-order-list.component';
 describe('PurchaseOrderListComponent', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('filters only using returned delayed state and selected supplier', () => {
+  it('resets to the first page and sends server filters', () => {
+    const page = vi.fn(() => of({ items: [], totalCount: 0 }));
     TestBed.configureTestingModule({
       providers: [
-        { provide: PurchaseOrderService, useValue: { list: () => of([]) } },
+        { provide: PurchaseOrderService, useValue: { page } },
         { provide: SupplierService, useValue: { list: () => of([]) } },
         { provide: MatDialog, useValue: {} },
         { provide: MatSnackBar, useValue: {} }
       ]
     });
     const component = TestBed.runInInjectionContext(() => new PurchaseOrderListComponent()) as unknown as {
-      orders: { set: (orders: PurchaseOrder[]) => void };
-      suppliers: { set: (suppliers: { id: string; name: string; contactEmail: null; isActive: boolean }[]) => void };
       delayedFilter: { set: (filter: 'all' | 'delayed' | 'current') => void };
-      supplierFilter: { set: (filter: string) => void };
-      filteredOrders: () => PurchaseOrder[];
+      pageIndex: { set: (pageIndex: number) => void; (): number };
+      updateDelayedFilter: (filter: 'all' | 'delayed' | 'current') => void;
     };
-    component.suppliers.set([{ id: 'supplier-1', name: 'Northstar', contactEmail: null, isActive: true }]);
-    component.orders.set([
-      createOrder('delayed', 'supplier-1', true),
-      createOrder('current', 'supplier-2', false)
-    ]);
 
-    component.delayedFilter.set('delayed');
-    expect(component.filteredOrders().map((order) => order.id)).toEqual(['delayed']);
-    component.delayedFilter.set('all');
-    component.supplierFilter.set('supplier-1');
-    expect(component.filteredOrders().map((order) => order.id)).toEqual(['delayed']);
+    component.pageIndex.set(3);
+    component.updateDelayedFilter('delayed');
+
+    expect(component.pageIndex()).toBe(0);
+    expect(page).toHaveBeenLastCalledWith(0, 25, expect.objectContaining({ isDelayed: true }));
   });
 
-  it('renders accessible lifecycle actions with centered icon controls', () => {
+  it('renders accessible lifecycle actions with centered icon controls and the shared paginator', () => {
     TestBed.configureTestingModule({
       imports: [PurchaseOrderListComponent],
       providers: [
         provideNoopAnimations(),
         {
           provide: PurchaseOrderService,
-          useValue: { list: () => of([createOrder('draft-order', 'supplier-1', false)]) }
+          useValue: { page: () => of({ items: [createOrder('draft-order', 'supplier-1', false)], totalCount: 1 }) }
         },
         {
           provide: SupplierService,
@@ -68,6 +62,7 @@ describe('PurchaseOrderListComponent', () => {
     expect(actions.querySelector('[aria-label="Edit draft order DRAFT-OR"]')).not.toBeNull();
     expect(actions.querySelector('[aria-label="Submit order DRAFT-OR"]')).not.toBeNull();
     expect(actions.querySelectorAll('.atlas-icon-control')).toHaveLength(4);
+    expect(fixture.nativeElement.querySelector('app-atlas-paginator')).not.toBeNull();
   });
 
   it('renders fetched orders with the unknown supplier fallback when supplier lookup fails', () => {
@@ -75,7 +70,7 @@ describe('PurchaseOrderListComponent', () => {
       imports: [PurchaseOrderListComponent],
       providers: [
         provideNoopAnimations(),
-        { provide: PurchaseOrderService, useValue: { list: () => of([createOrder('draft-order', 'missing-supplier', false)]) } },
+        { provide: PurchaseOrderService, useValue: { page: () => of({ items: [createOrder('draft-order', 'missing-supplier', false)], totalCount: 1 }) } },
         { provide: SupplierService, useValue: { list: () => throwError(() => new Error('Supplier lookup failed')) } },
         { provide: MatDialog, useValue: {} },
         { provide: MatSnackBar, useValue: {} }

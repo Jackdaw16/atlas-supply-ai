@@ -1,3 +1,19 @@
-:host { display: block; }
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  min-height: 0;
+}
 
-.incident-form { min-width: min(34rem, calc(100vw - 4rem)); }
+.incident-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.incident-form__body {
+  display: grid;
+  gap: 1.5rem;
+}

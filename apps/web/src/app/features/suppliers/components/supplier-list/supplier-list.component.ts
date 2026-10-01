@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,6 +14,7 @@ import { finalize, Observable } from 'rxjs';
 import { Supplier, SupplierRequest } from '../../models/supplier.models';
 import { SupplierService } from '../../services/supplier.service';
 import { SupplierFormDialogComponent } from '../supplier-form-dialog/supplier-form-dialog.component';
+import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/components/paginator/atlas-paginator.component';
 
 @Component({
   selector: 'app-supplier-list',
@@ -27,7 +28,8 @@ import { SupplierFormDialogComponent } from '../supplier-form-dialog/supplier-fo
     MatInputModule,
     MatProgressSpinnerModule,
     MatSnackBarModule,
-    MatTooltipModule
+    MatTooltipModule,
+    AtlasPaginatorComponent
   ],
   templateUrl: './supplier-list.component.html',
   styleUrl: './supplier-list.component.scss'
@@ -44,35 +46,28 @@ export class SupplierListComponent {
   protected readonly isLoading = signal(true);
   protected readonly isSaving = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
-  protected readonly filteredSuppliers = computed(() => {
-    const search = this.search().trim().toLocaleLowerCase();
-    if (!search) {
-      return this.suppliers();
-    }
-
-    return this.suppliers().filter((supplier) =>
-      supplier.name.toLocaleLowerCase().includes(search)
-      || supplier.contactEmail?.toLocaleLowerCase().includes(search));
-  });
+  protected readonly totalCount = signal(0);
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(25);
 
   constructor() {
     this.reload();
   }
 
-  protected reload(): void {
+  protected reload(selectedSupplierId = this.selectedSupplier()?.id): void {
     this.isLoading.set(true);
     this.errorMessage.set(null);
 
-    this.supplierService.list()
+    this.supplierService.page(this.pageIndex(), this.pageSize(), this.search())
       .pipe(
         takeUntilDestroyed(this.destroyRef),
         finalize(() => this.isLoading.set(false))
       )
       .subscribe({
-        next: (suppliers) => {
-          this.suppliers.set(suppliers);
-          const selected = this.selectedSupplier();
-          this.selectedSupplier.set(selected ? suppliers.find((supplier) => supplier.id === selected.id) ?? null : null);
+        next: (page) => {
+          this.suppliers.set(page.items);
+          this.totalCount.set(page.totalCount);
+          this.selectedSupplier.set(selectedSupplierId ? page.items.find((supplier) => supplier.id === selectedSupplierId) ?? null : null);
         },
         error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'load suppliers'))
       });
@@ -122,6 +117,17 @@ export class SupplierListComponent {
     this.selectedSupplier.set(supplier);
   }
 
+  protected updateSearch(search: string): void {
+    this.search.set(search);
+    this.resetPageAndReload();
+  }
+
+  protected changePage(event: PaginationChange): void {
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.reload();
+  }
+
   private persist(operation: Observable<Supplier>, successMessage: string): void {
     if (this.isSaving()) {
       return;
@@ -136,19 +142,16 @@ export class SupplierListComponent {
       )
       .subscribe({
         next: (supplier) => {
-          this.suppliers.update((suppliers) => {
-            const existingIndex = suppliers.findIndex((item) => item.id === supplier.id);
-            return existingIndex === -1
-              ? [...suppliers, supplier].sort((left, right) => left.name.localeCompare(right.name))
-              : suppliers.map((item) => item.id === supplier.id ? supplier : item);
-          });
-          if (this.selectedSupplier()?.id === supplier.id) {
-            this.selectedSupplier.set(supplier);
-          }
+          this.reload(supplier.id);
           this.snackBar.open(successMessage, 'Dismiss', { duration: 3500 });
         },
         error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'save the supplier'))
       });
+  }
+
+  private resetPageAndReload(): void {
+    this.pageIndex.set(0);
+    this.reload();
   }
 
   private toErrorMessage(error: unknown, action: string): string {

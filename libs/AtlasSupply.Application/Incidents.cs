@@ -8,6 +8,8 @@ public interface IIncidentRepository
 
     Task<IReadOnlyList<Incident>> ListAsync(CancellationToken cancellationToken);
 
+    Task<PagedResult<Incident>> PageAsync(IncidentPageRequest request, CancellationToken cancellationToken);
+
     Task<Incident?> GetByIdAsync(Guid id, CancellationToken cancellationToken);
 
     Task<Incident?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken);
@@ -41,12 +43,42 @@ public sealed record IncidentResult(
     DateTime? ResolvedAtUtc,
     DateTime? ClosedAtUtc);
 
+public enum IncidentLifecycleFilter
+{
+    Open,
+    Resolved
+}
+
+public sealed record IncidentPageRequest(
+    PageRequest Page,
+    string? Search,
+    IncidentStatus? Status,
+    Guid? SupplierId,
+    IncidentType? Type,
+    IncidentLifecycleFilter? Lifecycle);
+
 public sealed class ListIncidents(IIncidentRepository incidentRepository)
 {
     public async Task<IReadOnlyList<IncidentResult>> ExecuteAsync(CancellationToken cancellationToken)
     {
         var incidents = await incidentRepository.ListAsync(cancellationToken);
         return incidents.Select(IncidentResults.From).ToArray();
+    }
+}
+
+public sealed class PageIncidents(IIncidentRepository incidentRepository)
+{
+    public async Task<PagedResult<IncidentResult>> ExecuteAsync(
+        IncidentPageRequest request,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        request.Page.Validate();
+
+        var result = await incidentRepository.PageAsync(request, cancellationToken);
+        return new PagedResult<IncidentResult>(
+            result.Items.Select(IncidentResults.From).ToArray(),
+            result.TotalCount);
     }
 }
 

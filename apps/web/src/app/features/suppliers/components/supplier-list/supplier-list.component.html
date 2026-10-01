@@ -23,10 +23,10 @@
     <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field w-full sm:max-w-sm">
         <mat-label>Search suppliers</mat-label>
-        <input matInput [ngModel]="search()" (ngModelChange)="search.set($event)" placeholder="Name or email" />
+        <input matInput [ngModel]="search()" (ngModelChange)="updateSearch($event)" placeholder="Name or email" />
         <mat-icon matSuffix class="atlas-icon">search</mat-icon>
       </mat-form-field>
-      <p class="m-0 text-xs text-slate-400">{{ filteredSuppliers().length }} supplier{{ filteredSuppliers().length === 1 ? '' : 's' }}</p>
+      <p class="m-0 text-xs text-slate-400">{{ totalCount() }} supplier{{ totalCount() === 1 ? '' : 's' }}</p>
     </div>
 
     @if (isLoading()) {
@@ -34,7 +34,7 @@
         <mat-spinner diameter="22" />
         Loading suppliers...
       </div>
-    } @else if (filteredSuppliers().length === 0) {
+    } @else if (suppliers().length === 0) {
       <div class="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950/20 px-5 text-center">
         <mat-icon class="atlas-icon mb-3 text-slate-500">inventory_2</mat-icon>
         <p class="m-0 text-sm font-medium text-slate-200">No suppliers found</p>
@@ -43,7 +43,7 @@
     } @else {
       <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
         <div class="overflow-hidden rounded-xl border border-slate-700/60 bg-slate-950/25">
-          <div class="overflow-x-auto">
+          <div class="table-viewport">
             <table class="w-full min-w-[42.5rem] border-collapse text-left">
               <thead class="bg-slate-900/75 text-[11px] font-bold uppercase tracking-[0.13em] text-slate-400">
                 <tr>
@@ -54,7 +54,7 @@
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/90 text-sm">
-                @for (supplier of filteredSuppliers(); track supplier.id) {
+                @for (supplier of suppliers(); track supplier.id) {
                   <tr class="supplier-row cursor-pointer text-slate-200" [class.is-selected]="selectedSupplier()?.id === supplier.id" (click)="selectSupplier(supplier)">
                     <td class="px-4 py-3.5 font-medium">{{ supplier.name }}</td>
                     <td class="px-4 py-3.5 text-slate-400">{{ supplier.contactEmail || 'No contact email' }}</td>
@@ -81,6 +81,7 @@
               </tbody>
             </table>
           </div>
+          <app-atlas-paginator [totalCount]="totalCount()" [pageIndex]="pageIndex()" [pageSize]="pageSize()" [disabled]="isSaving()" [loading]="isLoading()" (pageChange)="changePage($event)" />
         </div>
 
         <aside class="h-fit rounded-xl border border-cyan-300/10 bg-slate-950/35 p-4" aria-live="polite">

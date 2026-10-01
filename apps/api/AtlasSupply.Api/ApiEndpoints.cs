@@ -1,4 +1,5 @@
 using AtlasSupply.Application;
+using AtlasSupply.Domain;
 using System.Net.Mail;
 
 namespace AtlasSupply.Api;
@@ -72,6 +73,30 @@ public static class ApiEndpoints
             .WithName("ListSuppliers")
             .WithTags("Suppliers")
             .Produces<IReadOnlyList<SupplierResult>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapGet("/api/suppliers/page", async (
+            int pageIndex,
+            int pageSize,
+            string? search,
+            PageSuppliers pageSuppliers,
+            CancellationToken cancellationToken) =>
+        {
+            var validationResult = ValidatePageRequest(pageIndex, pageSize);
+            if (validationResult is not null)
+            {
+                return validationResult;
+            }
+
+            var suppliers = await pageSuppliers.ExecuteAsync(
+                new SupplierPageRequest(new PageRequest(pageIndex, pageSize), search),
+                cancellationToken);
+            return Results.Ok(suppliers);
+        })
+            .WithName("PageSuppliers")
+            .WithTags("Suppliers")
+            .Produces<PagedResult<SupplierResult>>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         app.MapGet("/api/suppliers/{id}", async (
@@ -222,6 +247,43 @@ public static class ApiEndpoints
             .WithTags("Orders")
             .RequireAuthorization()
             .Produces<IReadOnlyList<PurchaseOrderResult>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapGet("/api/orders/page", async (
+            int pageIndex,
+            int pageSize,
+            string? search,
+            string? status,
+            string? supplierId,
+            string? isDelayed,
+            PagePurchaseOrders pagePurchaseOrders,
+            CancellationToken cancellationToken) =>
+        {
+            var validationResult = ValidatePageRequest(pageIndex, pageSize);
+            var statusValidationResult = ValidateOptionalEnum<PurchaseOrderStatus>(status, "status", out var parsedStatus);
+            var supplierValidationResult = ValidateOptionalGuid(supplierId, "supplierId", out var parsedSupplierId);
+            var delayedValidationResult = ValidateOptionalBoolean(isDelayed, "isDelayed", out var parsedIsDelayed);
+            validationResult ??= statusValidationResult ?? supplierValidationResult ?? delayedValidationResult;
+            if (validationResult is not null)
+            {
+                return validationResult;
+            }
+
+            var orders = await pagePurchaseOrders.ExecuteAsync(
+                new PurchaseOrderPageRequest(
+                    new PageRequest(pageIndex, pageSize),
+                    search,
+                    parsedStatus,
+                    parsedSupplierId,
+                    parsedIsDelayed),
+                cancellationToken);
+            return Results.Ok(orders);
+        })
+            .WithName("PagePurchaseOrders")
+            .WithTags("Orders")
+            .RequireAuthorization()
+            .Produces<PagedResult<PurchaseOrderResult>>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         app.MapGet("/api/orders/{id}", async (
@@ -406,6 +468,46 @@ public static class ApiEndpoints
             .WithTags("Incidents")
             .RequireAuthorization()
             .Produces<IReadOnlyList<IncidentResult>>(StatusCodes.Status200OK)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapGet("/api/incidents/page", async (
+            int pageIndex,
+            int pageSize,
+            string? search,
+            string? status,
+            string? supplierId,
+            string? type,
+            string? lifecycle,
+            PageIncidents pageIncidents,
+            CancellationToken cancellationToken) =>
+        {
+            var validationResult = ValidatePageRequest(pageIndex, pageSize);
+            var statusValidationResult = ValidateOptionalEnum<IncidentStatus>(status, "status", out var parsedStatus);
+            var supplierValidationResult = ValidateOptionalGuid(supplierId, "supplierId", out var parsedSupplierId);
+            var typeValidationResult = ValidateOptionalEnum<IncidentType>(type, "type", out var parsedType);
+            var lifecycleValidationResult = ValidateLifecycle(lifecycle, out var parsedLifecycle);
+            validationResult ??= statusValidationResult ?? supplierValidationResult ?? typeValidationResult ?? lifecycleValidationResult;
+            if (validationResult is not null)
+            {
+                return validationResult;
+            }
+
+            var incidents = await pageIncidents.ExecuteAsync(
+                new IncidentPageRequest(
+                    new PageRequest(pageIndex, pageSize),
+                    search,
+                    parsedStatus,
+                    parsedSupplierId,
+                    parsedType,
+                    parsedLifecycle),
+                cancellationToken);
+            return Results.Ok(incidents);
+        })
+            .WithName("PageIncidents")
+            .WithTags("Incidents")
+            .RequireAuthorization()
+            .Produces<PagedResult<IncidentResult>>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
 
         app.MapGet("/api/incidents/{id}", async (
@@ -603,6 +705,119 @@ public static class ApiEndpoints
 
     private static bool TryParseIncidentId(string id, out Guid incidentId) =>
         Guid.TryParse(id, out incidentId) && incidentId != Guid.Empty;
+
+    private static IResult? ValidatePageRequest(int pageIndex, int pageSize)
+    {
+        if (pageIndex < 0)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["pageIndex"] = ["Page index cannot be negative."]
+            });
+        }
+
+        if (pageSize is < 1 or > 100)
+        {
+            return Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["pageSize"] = ["Page size must be between 1 and 100."]
+            });
+        }
+
+        return pageIndex > int.MaxValue / pageSize
+            ? Results.ValidationProblem(new Dictionary<string, string[]>
+            {
+                ["pageIndex"] = ["Page index and page size exceed the supported paging range."]
+            })
+            : null;
+    }
+
+    private static IResult? ValidateOptionalGuid(string? value, string parameterName, out Guid? parsedValue)
+    {
+        parsedValue = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Guid.TryParse(value, out var id) && id != Guid.Empty)
+        {
+            parsedValue = id;
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [parameterName] = [$"{parameterName} must be a non-empty GUID."]
+        });
+    }
+
+    private static IResult? ValidateOptionalEnum<TEnum>(string? value, string parameterName, out TEnum? parsedValue)
+        where TEnum : struct, Enum
+    {
+        parsedValue = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Enum.TryParse<TEnum>(value, ignoreCase: true, out var parsed) && Enum.IsDefined(parsed))
+        {
+            parsedValue = parsed;
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [parameterName] = [$"{parameterName} is invalid."]
+        });
+    }
+
+    private static IResult? ValidateOptionalBoolean(string? value, string parameterName, out bool? parsedValue)
+    {
+        parsedValue = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (bool.TryParse(value, out var parsed))
+        {
+            parsedValue = parsed;
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            [parameterName] = [$"{parameterName} must be true or false."]
+        });
+    }
+
+    private static IResult? ValidateLifecycle(string? value, out IncidentLifecycleFilter? lifecycle)
+    {
+        lifecycle = null;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (string.Equals(value, "open", StringComparison.OrdinalIgnoreCase))
+        {
+            lifecycle = IncidentLifecycleFilter.Open;
+            return null;
+        }
+
+        if (string.Equals(value, "resolved", StringComparison.OrdinalIgnoreCase))
+        {
+            lifecycle = IncidentLifecycleFilter.Resolved;
+            return null;
+        }
+
+        return Results.ValidationProblem(new Dictionary<string, string[]>
+        {
+            ["lifecycle"] = ["Lifecycle must be open or resolved."]
+        });
+    }
 
     private static IResult InvalidSupplierId() => Results.ValidationProblem(new Dictionary<string, string[]>
     {

@@ -114,6 +114,30 @@ public sealed class IncidentManagementEndpointTests
         Assert.Equal(HttpStatusCode.Unauthorized, resolveResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task IncidentManagement_PageEndpointRequiresAuthenticationAndFiltersCurrentLifecycle()
+    {
+        using var factory = new IncidentApiFactory();
+        using var client = factory.CreateClient();
+
+        var unauthorizedResponse = await client.GetAsync("/api/incidents/page?pageIndex=0&pageSize=25");
+        Authenticate(client);
+        var pageResponse = await client.GetAsync("/api/incidents/page?pageIndex=0&pageSize=25&search=booking&status=Open&type=Delay&lifecycle=open");
+        var page = await pageResponse.Content.ReadFromJsonAsync<PagedResult<IncidentResult>>();
+        var invalidResponse = await client.GetAsync("/api/incidents/page?pageIndex=0&pageSize=25&lifecycle=closed");
+        var maximumPageResponse = await client.GetAsync("/api/incidents/page?pageIndex=21474836&pageSize=100");
+        var overflowingResponse = await client.GetAsync("/api/incidents/page?pageIndex=21474837&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, unauthorizedResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, pageResponse.StatusCode);
+        Assert.NotNull(page);
+        Assert.Single(page.Items);
+        Assert.Equal(factory.OpenIncidentId, page.Items[0].Id);
+        Assert.Equal(HttpStatusCode.OK, maximumPageResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, overflowingResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+    }
+
     private static void Authenticate(HttpClient client)
     {
         var now = DateTimeOffset.UtcNow;
@@ -188,6 +212,13 @@ public sealed class IncidentManagementEndpointTests
     {
         private readonly Dictionary<Guid, Supplier> suppliers = suppliers.ToDictionary(supplier => supplier.Id);
         public Task<IReadOnlyList<Supplier>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<Supplier>>([.. suppliers.Values]);
+        public Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = suppliers.Values.OrderBy(supplier => supplier.Name).ThenBy(supplier => supplier.Id).ToArray();
+            return Task.FromResult(new PagedResult<Supplier>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
         public Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(suppliers.GetValueOrDefault(id));
         public Task<Supplier?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(suppliers.GetValueOrDefault(id));
         public Task CreateAsync(Supplier supplier, CancellationToken cancellationToken) { suppliers.Add(supplier.Id, supplier); return Task.CompletedTask; }
@@ -200,6 +231,13 @@ public sealed class IncidentManagementEndpointTests
         public Task<PurchaseOrder?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(purchaseOrders.GetValueOrDefault(id));
         public Task<PurchaseOrder?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(purchaseOrders.GetValueOrDefault(id));
         public Task<IReadOnlyList<PurchaseOrder>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PurchaseOrder>>([.. purchaseOrders.Values]);
+        public Task<PagedResult<PurchaseOrder>> PageAsync(PurchaseOrderPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = purchaseOrders.Values.OrderByDescending(order => order.CreatedAtUtc).ThenBy(order => order.Id).ToArray();
+            return Task.FromResult(new PagedResult<PurchaseOrder>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
         public Task<IReadOnlyList<PurchaseOrder>> ListOutstandingApprovedAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<PurchaseOrder>>([]);
         public Task CreateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken) { purchaseOrders.Add(purchaseOrder.Id, purchaseOrder); return Task.CompletedTask; }
         public Task UpdateAsync(PurchaseOrder purchaseOrder, CancellationToken cancellationToken) => Task.CompletedTask;
@@ -210,6 +248,25 @@ public sealed class IncidentManagementEndpointTests
         private readonly Dictionary<Guid, Incident> incidents = incidents.ToDictionary(incident => incident.Id);
         public Task AddAsync(Incident incident, CancellationToken cancellationToken) { incidents.Add(incident.Id, incident); return Task.CompletedTask; }
         public Task<IReadOnlyList<Incident>> ListAsync(CancellationToken cancellationToken) => Task.FromResult<IReadOnlyList<Incident>>([.. incidents.Values.OrderByDescending(incident => incident.CreatedAtUtc)]);
+        public Task<PagedResult<Incident>> PageAsync(IncidentPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = incidents.Values
+                .Where(incident => string.IsNullOrWhiteSpace(request.Search)
+                    || incident.Id.ToString().Contains(request.Search, StringComparison.OrdinalIgnoreCase)
+                    || incident.Description.Contains(request.Search, StringComparison.OrdinalIgnoreCase))
+                .Where(incident => request.Status is null || incident.Status == request.Status)
+                .Where(incident => request.SupplierId is null || incident.SupplierId == request.SupplierId)
+                .Where(incident => request.Type is null || incident.Type == request.Type)
+                .Where(incident => request.Lifecycle is null
+                    || request.Lifecycle == IncidentLifecycleFilter.Open && incident.Status == IncidentStatus.Open
+                    || request.Lifecycle == IncidentLifecycleFilter.Resolved && incident.Status == IncidentStatus.Resolved)
+                .OrderByDescending(incident => incident.CreatedAtUtc)
+                .ThenBy(incident => incident.Id)
+                .ToArray();
+            return Task.FromResult(new PagedResult<Incident>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
         public Task<Incident?> GetByIdAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(incidents.GetValueOrDefault(id));
         public Task<Incident?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken) => Task.FromResult(incidents.GetValueOrDefault(id));
         public Task UpdateAsync(Incident incident, CancellationToken cancellationToken) => Task.CompletedTask;

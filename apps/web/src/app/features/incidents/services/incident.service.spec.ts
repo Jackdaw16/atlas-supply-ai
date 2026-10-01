@@ -21,6 +21,18 @@ describe('IncidentService', () => {
     expect(listRequest.request.method).toBe('GET');
     listRequest.flush([incident]);
 
+    service.page(0, 50, { search: 'booking', status: 'Open', supplierId: 'supplier-1', type: 'Delay', lifecycle: 'open' })
+      .subscribe((page) => expect(page).toEqual({ items: [incident], totalCount: 1 }));
+    const pageRequest = http.expectOne((request) => request.url === 'https://api.atlas.test/api/incidents/page');
+    expect(pageRequest.request.params.get('pageIndex')).toBe('0');
+    expect(pageRequest.request.params.get('pageSize')).toBe('50');
+    expect(pageRequest.request.params.get('search')).toBe('booking');
+    expect(pageRequest.request.params.get('status')).toBe('Open');
+    expect(pageRequest.request.params.get('supplierId')).toBe('supplier-1');
+    expect(pageRequest.request.params.get('type')).toBe('Delay');
+    expect(pageRequest.request.params.get('lifecycle')).toBe('open');
+    pageRequest.flush({ items: [incident], totalCount: 1 });
+
     service.get(incident.id).subscribe();
     const getRequest = http.expectOne('https://api.atlas.test/api/incidents/incident-1');
     expect(getRequest.request.method).toBe('GET');

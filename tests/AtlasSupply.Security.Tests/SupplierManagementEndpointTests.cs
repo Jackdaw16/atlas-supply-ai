@@ -130,6 +130,32 @@ public sealed class SupplierManagementEndpointTests
         Assert.Equal(HttpStatusCode.Unauthorized, deactivateResponse.StatusCode);
     }
 
+    [Fact]
+    public async Task SupplierManagement_PageEndpointReturnsFilteredEnvelopeAndValidatesPaging()
+    {
+        using var factory = new SupplierApiFactory();
+        using var client = factory.CreateClient();
+        Authenticate(client);
+
+        await client.PostAsJsonAsync("/api/suppliers", new { name = "Northstar Components", contactEmail = "orders@northstar.example" });
+        await client.PostAsJsonAsync("/api/suppliers", new { name = "Southwind Logistics", contactEmail = "dispatch@southwind.example" });
+
+        var pageResponse = await client.GetAsync("/api/suppliers/page?pageIndex=0&pageSize=1&search=northstar");
+        var page = await pageResponse.Content.ReadFromJsonAsync<PagedResult<SupplierResult>>();
+        var invalidResponse = await client.GetAsync("/api/suppliers/page?pageIndex=-1&pageSize=25");
+        var maximumPageResponse = await client.GetAsync("/api/suppliers/page?pageIndex=21474836&pageSize=100");
+        var overflowingResponse = await client.GetAsync("/api/suppliers/page?pageIndex=21474837&pageSize=100");
+
+        Assert.Equal(HttpStatusCode.OK, pageResponse.StatusCode);
+        Assert.NotNull(page);
+        Assert.Equal(1, page.TotalCount);
+        Assert.Single(page.Items);
+        Assert.Equal("Northstar Components", page.Items[0].Name);
+        Assert.Equal(HttpStatusCode.BadRequest, invalidResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, maximumPageResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, overflowingResponse.StatusCode);
+    }
+
     private static void Authenticate(HttpClient client)
     {
         var now = DateTimeOffset.UtcNow;
@@ -182,6 +208,20 @@ public sealed class SupplierManagementEndpointTests
 
         public Task<IReadOnlyList<Supplier>> ListAsync(CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyList<Supplier>>([.. suppliers.Values.OrderBy(supplier => supplier.Name)]);
+
+        public Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken)
+        {
+            var matches = suppliers.Values
+                .Where(supplier => string.IsNullOrWhiteSpace(request.Search)
+                    || supplier.Name.Contains(request.Search, StringComparison.OrdinalIgnoreCase)
+                    || supplier.ContactEmail?.Contains(request.Search, StringComparison.OrdinalIgnoreCase) == true)
+                .OrderBy(supplier => supplier.Name)
+                .ThenBy(supplier => supplier.Id)
+                .ToArray();
+            return Task.FromResult(new PagedResult<Supplier>(
+                matches.Skip(request.Page.PageIndex * request.Page.PageSize).Take(request.Page.PageSize).ToArray(),
+                matches.Length));
+        }
 
         public Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken) =>
             Task.FromResult(suppliers.GetValueOrDefault(id));

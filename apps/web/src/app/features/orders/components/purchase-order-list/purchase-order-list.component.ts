@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
@@ -14,8 +14,9 @@ import { MatTooltipModule } from '@angular/material/tooltip';
 import { catchError, finalize, forkJoin, Observable, of } from 'rxjs';
 import { Supplier } from '../../../suppliers/models/supplier.models';
 import { SupplierService } from '../../../suppliers/services/supplier.service';
+import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/components/paginator/atlas-paginator.component';
 import { PurchaseOrder, PurchaseOrderStatus } from '../../models/purchase-order.models';
-import { PurchaseOrderService } from '../../services/purchase-order.service';
+import { PurchaseOrderPageQuery, PurchaseOrderService } from '../../services/purchase-order.service';
 import { PurchaseOrderFormDialogComponent } from '../purchase-order-form-dialog/purchase-order-form-dialog.component';
 
 @Component({
@@ -31,7 +32,8 @@ import { PurchaseOrderFormDialogComponent } from '../purchase-order-form-dialog/
     MatProgressSpinnerModule,
     MatSelectModule,
     MatSnackBarModule,
-    MatTooltipModule
+    MatTooltipModule,
+    AtlasPaginatorComponent
   ],
   templateUrl: './purchase-order-list.component.html',
   styleUrl: './purchase-order-list.component.scss'
@@ -53,38 +55,29 @@ export class PurchaseOrderListComponent {
   protected readonly isLoading = signal(true);
   protected readonly isSaving = signal(false);
   protected readonly errorMessage = signal<string | null>(null);
+  protected readonly totalCount = signal(0);
+  protected readonly pageIndex = signal(0);
+  protected readonly pageSize = signal(25);
   protected readonly statusOptions: PurchaseOrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Received', 'Cancelled'];
-  protected readonly filteredOrders = computed(() => {
-    const search = this.search().trim().toLocaleLowerCase();
-    return this.orders().filter((order) => {
-      const matchesSearch = !search
-        || order.id.toLocaleLowerCase().includes(search)
-        || this.supplierName(order.supplierId).toLocaleLowerCase().includes(search);
-      const matchesStatus = this.statusFilter() === 'all' || order.status === this.statusFilter();
-      const matchesSupplier = this.supplierFilter() === 'all' || order.supplierId === this.supplierFilter();
-      const matchesDelayed = this.delayedFilter() === 'all'
-        || (this.delayedFilter() === 'delayed' ? order.isDelayed : !order.isDelayed);
-      return matchesSearch && matchesStatus && matchesSupplier && matchesDelayed;
-    });
-  });
 
   constructor() {
     this.reload();
   }
 
-  protected reload(): void {
+  protected reload(selectedOrderId = this.selectedOrder()?.id): void {
     this.isLoading.set(true);
     this.errorMessage.set(null);
     forkJoin({
-      orders: this.purchaseOrderService.list(),
+      page: this.purchaseOrderService.page(this.pageIndex(), this.pageSize(), this.pageQuery()),
       suppliers: this.supplierService.list().pipe(catchError(() => of([])))
     })
       .pipe(takeUntilDestroyed(this.destroyRef), finalize(() => this.isLoading.set(false)))
       .subscribe({
-        next: ({ orders, suppliers }) => {
-          this.orders.set(orders);
+        next: ({ page, suppliers }) => {
+          this.orders.set(page.items);
+          this.totalCount.set(page.totalCount);
           this.suppliers.set(suppliers);
-          this.refreshSelectedOrder();
+          this.selectedOrder.set(selectedOrderId ? page.items.find((order) => order.id === selectedOrderId) ?? null : null);
         },
         error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'load orders'))
       });
@@ -102,6 +95,32 @@ export class PurchaseOrderListComponent {
 
   protected selectOrder(order: PurchaseOrder): void {
     this.selectedOrder.set(order);
+  }
+
+  protected updateSearch(search: string): void {
+    this.search.set(search);
+    this.resetPageAndReload();
+  }
+
+  protected updateStatusFilter(status: PurchaseOrderStatus | 'all'): void {
+    this.statusFilter.set(status);
+    this.resetPageAndReload();
+  }
+
+  protected updateSupplierFilter(supplierId: string): void {
+    this.supplierFilter.set(supplierId);
+    this.resetPageAndReload();
+  }
+
+  protected updateDelayedFilter(filter: 'all' | 'delayed' | 'current'): void {
+    this.delayedFilter.set(filter);
+    this.resetPageAndReload();
+  }
+
+  protected changePage(event: PaginationChange): void {
+    this.pageIndex.set(event.pageIndex);
+    this.pageSize.set(event.pageSize);
+    this.reload();
   }
 
   protected transition(order: PurchaseOrder, action: 'submit' | 'approve' | 'receive' | 'cancel'): void {
@@ -147,7 +166,7 @@ export class PurchaseOrderListComponent {
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((saved: PurchaseOrder | undefined) => {
         if (saved) {
-          this.upsert(saved);
+          this.reload(saved.id);
           this.snackBar.open(purchaseOrder ? 'Draft order updated.' : 'Order created.', 'Dismiss', { duration: 3500 });
         }
       });
@@ -162,25 +181,28 @@ export class PurchaseOrderListComponent {
     this.errorMessage.set(null);
     operation.pipe(takeUntilDestroyed(this.destroyRef), finalize(() => this.isSaving.set(false))).subscribe({
       next: (purchaseOrder) => {
-        this.upsert(purchaseOrder);
+        this.reload(purchaseOrder.id);
         this.snackBar.open(successMessage, 'Dismiss', { duration: 3500 });
       },
       error: (error: unknown) => this.errorMessage.set(this.toErrorMessage(error, 'update the order'))
     });
   }
 
-  private upsert(purchaseOrder: PurchaseOrder): void {
-    this.orders.update((orders) => {
-      const found = orders.some((order) => order.id === purchaseOrder.id);
-      const updated = found ? orders.map((order) => order.id === purchaseOrder.id ? purchaseOrder : order) : [...orders, purchaseOrder];
-      return updated.sort((left, right) => right.createdAtUtc.localeCompare(left.createdAtUtc));
-    });
-    this.selectedOrder.set(purchaseOrder);
+  private pageQuery(): PurchaseOrderPageQuery {
+    const status = this.statusFilter();
+    const supplierId = this.supplierFilter();
+    const delayed = this.delayedFilter();
+    return {
+      search: this.search(),
+      status: status === 'all' ? undefined : status,
+      supplierId: supplierId === 'all' ? undefined : supplierId,
+      isDelayed: delayed === 'all' ? undefined : delayed === 'delayed'
+    };
   }
 
-  private refreshSelectedOrder(): void {
-    const selected = this.selectedOrder();
-    this.selectedOrder.set(selected ? this.orders().find((order) => order.id === selected.id) ?? null : null);
+  private resetPageAndReload(): void {
+    this.pageIndex.set(0);
+    this.reload();
   }
 
   private toErrorMessage(error: unknown, action: string): string {
