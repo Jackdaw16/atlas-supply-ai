@@ -32,7 +32,13 @@ public sealed class PurchaseOrderItem
             throw new ArgumentException("Item description is required.", nameof(description));
         }
 
-        Description = description.Trim();
+        var trimmedDescription = description.Trim();
+        if (trimmedDescription.Length > 500)
+        {
+            throw new ArgumentException("Item description cannot exceed 500 characters.", nameof(description));
+        }
+
+        Description = trimmedDescription;
     }
 
     public void SetQuantity(int quantity)
@@ -50,6 +56,13 @@ public sealed class PurchaseOrderItem
         if (unitPrice <= 0)
         {
             throw new ArgumentOutOfRangeException(nameof(unitPrice), "Item unit price must be greater than zero.");
+        }
+
+        if (decimal.Round(unitPrice, 2) != unitPrice || unitPrice > 9_999_999_999_999_999.99m)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(unitPrice),
+                "Item unit price must fit a monetary value with up to 16 integral digits and 2 decimal places.");
         }
 
         UnitPrice = unitPrice;

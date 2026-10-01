@@ -1,0 +1,38 @@
+<header class="atlas-dialog-header">
+  <div>
+    <h2 mat-dialog-title>{{ isEditMode ? 'Edit supplier' : 'Add supplier' }}</h2>
+    <p class="atlas-dialog-description">Keep supplier contact details accurate for purchasing teams.</p>
+  </div>
+  <button mat-button type="button" mat-dialog-close class="atlas-dialog-close" aria-label="Close dialog">
+    <span aria-hidden="true">×</span>
+  </button>
+</header>
+
+<form #supplierForm="ngForm" class="supplier-form" (ngSubmit)="save(supplierForm)">
+  <div mat-dialog-content class="atlas-dialog-body supplier-form__body">
+    <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
+      <mat-label>Supplier name</mat-label>
+      <input matInput name="name" [(ngModel)]="form.name" required pattern=".*\S.*" maxlength="200" autocomplete="organization" />
+      @if (supplierForm.controls['name']?.hasError('required')) {
+        <mat-error>A supplier name is required.</mat-error>
+      } @else if (supplierForm.controls['name']?.hasError('pattern') || supplierForm.controls['name']?.hasError('whitespace')) {
+        <mat-error>A supplier name cannot contain only spaces.</mat-error>
+      }
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" class="w-full" subscriptSizing="dynamic">
+      <mat-label>Contact email</mat-label>
+      <input matInput type="email" name="contactEmail" [(ngModel)]="form.contactEmail" email maxlength="320" autocomplete="email" />
+      @if (supplierForm.controls['contactEmail']?.hasError('email')) {
+        <mat-error>Enter a valid email address.</mat-error>
+      }
+    </mat-form-field>
+  </div>
+
+  <div mat-dialog-actions align="end" class="atlas-dialog-footer">
+    <button mat-button type="button" mat-dialog-close>Cancel</button>
+    <button mat-flat-button type="submit" [disabled]="supplierForm.invalid">
+      {{ isEditMode ? 'Save changes' : 'Create supplier' }}
+    </button>
+  </div>
+</form>

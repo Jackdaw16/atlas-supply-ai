@@ -4,6 +4,18 @@
 }
 
 .app-shell {
+  --mat-toolbar-container-text-color: rgb(241 245 249);
+  --mat-list-list-item-label-text-color: rgb(203 213 225);
+  --mat-list-list-item-leading-icon-color: rgb(148 163 184);
+  --mat-list-list-item-hover-label-text-color: rgb(241 245 249);
+  --mat-list-list-item-hover-leading-icon-color: rgb(207 250 254);
+  --mat-list-list-item-hover-state-layer-color: rgb(103 232 249);
+  --mat-list-list-item-hover-state-layer-opacity: 0.14;
+  --mat-list-list-item-focus-label-text-color: rgb(255 255 255);
+  --mat-list-list-item-focus-state-layer-color: rgb(251 191 36);
+  --mat-list-list-item-focus-state-layer-opacity: 0.16;
+  --mat-icon-button-icon-color: rgb(241 245 249);
+  --mat-icon-button-disabled-icon-color: rgb(100 116 139);
   background:
     linear-gradient(90deg, rgb(4 12 24 / 0.9), rgb(7 19 35 / 0.78)),
     url('/assets/backgrounds/atlas-logistics-bg.png') center / cover no-repeat;
@@ -15,6 +27,63 @@
   backdrop-filter: blur(14px);
 }
 
+.app-drawer-container {
+  background: transparent;
+}
+
+.app-drawer {
+  display: flex;
+  width: 16rem;
+  flex-direction: column;
+  background: rgb(7 18 33 / 0.96);
+  border-right: 1px solid rgb(125 211 252 / 0.1);
+}
+
+.app-drawer ::ng-deep .mat-drawer-inner-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-drawer-content {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.drawer-brand {
+  border-bottom: 1px solid rgb(125 211 252 / 0.1);
+}
+
+.drawer-navigation a {
+  border-radius: 0.5rem;
+  transition: background-color 150ms ease, box-shadow 150ms ease, color 150ms ease;
+}
+
+.drawer-navigation a:hover {
+  background: rgb(103 232 249 / 0.14);
+  color: rgb(241 245 249);
+}
+
+.drawer-navigation a:focus-visible {
+  background: rgb(251 191 36 / 0.16);
+  color: rgb(255 255 255);
+}
+
+.drawer-navigation a.drawer-link-active {
+  background: rgb(103 232 249 / 0.22);
+  box-shadow: inset 3px 0 0 rgb(103 232 249);
+  color: rgb(236 254 255);
+}
+
+.drawer-navigation a.drawer-link-active:hover {
+  background: rgb(103 232 249 / 0.3);
+}
+
+.drawer-navigation a.drawer-link-active:focus-visible {
+  background: rgb(103 232 249 / 0.28);
+  outline-color: rgb(251 191 36 / 0.95);
+}
+
 .brand-symbol {
   display: block;
   width: 100%;
@@ -22,7 +91,7 @@
   object-fit: contain;
 }
 
-.chat-panel {
+.workspace-panel {
   background-color: rgb(16 27 43 / 0.94);
   border: 1px solid rgb(148 163 184 / 0.1);
   backdrop-filter: blur(10px);
@@ -32,4 +101,19 @@
   display: inline-flex;
   align-items: center;
   gap: 0.375rem;
+}
+
+.logout-action:hover:not(:disabled) {
+  background: rgb(103 232 249 / 0.14);
+  color: rgb(241 245 249) !important;
+}
+
+.logout-action:focus-visible {
+  background: rgb(251 191 36 / 0.16);
+}
+
+@media (max-width: 767px) {
+  .app-drawer {
+    width: min(18rem, calc(100vw - 3rem));
+  }
 }

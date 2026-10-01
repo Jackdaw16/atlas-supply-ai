@@ -1,0 +1,19 @@
+:host {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  min-height: 0;
+}
+
+.supplier-form {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.supplier-form__body {
+  display: grid;
+  gap: 1.25rem;
+}

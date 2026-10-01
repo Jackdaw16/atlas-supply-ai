@@ -1,26 +1,76 @@
 @if (authService.hasValidSession()) {
   <div class="app-shell flex h-dvh flex-col overflow-hidden text-slate-100">
-    <mat-toolbar class="app-toolbar shrink-0 px-4! text-white md:px-6!">
-      <div class="mx-auto flex w-full max-w-7xl items-center gap-3">
-        <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-950/45 p-1.5 shadow-[0_0_0_1px_rgba(103,232,249,0.16)]">
-          <img class="brand-symbol" src="assets/branding/atlas-symbol.png" alt="" />
+    <mat-sidenav-container class="app-drawer-container min-h-0 flex-1">
+      <mat-sidenav
+        class="app-drawer"
+        [mode]="isHandset() ? 'over' : 'side'"
+        [opened]="isHandset() ? navigationOpen() : true"
+        [autoFocus]="isHandset()"
+        (closed)="navigationOpen.set(false)">
+        <div class="drawer-brand flex items-center gap-3 px-5 py-5">
+          <div class="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-950/45 p-1.5 shadow-[0_0_0_1px_rgba(103,232,249,0.16)]">
+            <img class="brand-symbol" src="assets/branding/atlas-symbol.png" alt="" />
+          </div>
+          <div class="min-w-0">
+            <div class="text-base font-semibold leading-tight tracking-wide text-white">Atlas Supply</div>
+            <div class="mt-0.5 text-xs font-normal leading-none text-slate-300">Operations intelligence</div>
+          </div>
         </div>
-        <div class="flex min-w-0 flex-1 flex-col justify-center">
-          <div class="text-base font-semibold leading-tight tracking-wide text-white">Atlas Supply</div>
-          <div class="mt-0.5 text-xs font-normal leading-none text-slate-300">Operations intelligence</div>
-        </div>
-        <button mat-button type="button" class="logout-action shrink-0 text-slate-300!" (click)="authService.logout()">
-          <mat-icon>logout</mat-icon>
-          <span class="hidden sm:inline">Sign out</span>
-        </button>
-      </div>
-    </mat-toolbar>
 
-    <main class="mx-auto flex min-h-0 w-full max-w-7xl flex-1 overflow-hidden px-4 py-3 md:p-6">
-      <section class="chat-panel flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-[0_24px_60px_-34px_rgba(0,0,0,0.9)] md:rounded-2xl" aria-label="Atlas Supply assistant">
-        <router-outlet />
-      </section>
-    </main>
+        <mat-nav-list aria-label="Primary navigation" class="drawer-navigation px-2!">
+          <ul class="m-0 list-none p-0">
+            <li>
+              <a mat-list-item routerLink="/chat" routerLinkActive="drawer-link-active" (click)="closeNavigationOnHandset()">
+                <mat-icon matListItemIcon class="atlas-icon">chat</mat-icon>
+                <span matListItemTitle>Chat</span>
+              </a>
+            </li>
+            <li>
+              <a mat-list-item routerLink="/suppliers" routerLinkActive="drawer-link-active" (click)="closeNavigationOnHandset()">
+                <mat-icon matListItemIcon class="atlas-icon">storefront</mat-icon>
+                <span matListItemTitle>Suppliers</span>
+              </a>
+            </li>
+            <li>
+              <a mat-list-item routerLink="/orders" routerLinkActive="drawer-link-active" (click)="closeNavigationOnHandset()">
+                <mat-icon matListItemIcon class="atlas-icon">receipt_long</mat-icon>
+                <span matListItemTitle>Orders</span>
+              </a>
+            </li>
+            <li>
+              <a mat-list-item routerLink="/incidents" routerLinkActive="drawer-link-active" (click)="closeNavigationOnHandset()">
+                <mat-icon matListItemIcon class="atlas-icon">report_problem</mat-icon>
+                <span matListItemTitle>Incidents</span>
+              </a>
+            </li>
+          </ul>
+        </mat-nav-list>
+
+        <div class="mt-auto px-3 pb-4 pt-3">
+          <button mat-button type="button" class="atlas-icon-label-control logout-action w-full justify-start! text-slate-300!" (click)="authService.logout()">
+            <mat-icon class="atlas-icon">logout</mat-icon>
+            <span>Sign out</span>
+          </button>
+        </div>
+      </mat-sidenav>
+
+      <mat-sidenav-content class="app-drawer-content">
+        @if (isHandset()) {
+          <mat-toolbar class="app-toolbar shrink-0 px-4! text-white">
+            <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="navigationOpen() ? 'Close navigation' : 'Open navigation'" (click)="toggleNavigation()">
+              <mat-icon class="atlas-icon">{{ navigationOpen() ? 'close' : 'menu' }}</mat-icon>
+            </button>
+            <span class="text-base font-semibold tracking-wide text-white">Atlas Supply</span>
+          </mat-toolbar>
+        }
+
+        <main class="flex min-h-0 flex-1 overflow-hidden px-4 py-3 md:p-6">
+          <section class="workspace-panel flex min-h-0 flex-1 overflow-hidden rounded-xl shadow-[0_24px_60px_-34px_rgba(0,0,0,0.9)] md:rounded-2xl" aria-label="Atlas Supply workspace">
+            <router-outlet />
+          </section>
+        </main>
+      </mat-sidenav-content>
+    </mat-sidenav-container>
   </div>
 } @else {
   <router-outlet />

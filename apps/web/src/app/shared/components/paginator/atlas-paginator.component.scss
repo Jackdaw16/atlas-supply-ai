@@ -1,0 +1,53 @@
+.atlas-paginator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem 1rem;
+  border-top: 1px solid rgb(51 65 85 / 0.7);
+  background: rgb(15 23 42 / 0.8);
+  padding: 0.75rem 1rem;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+}
+
+.atlas-paginator label,
+.atlas-paginator div {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.atlas-paginator p {
+  margin: 0;
+  color: rgb(165 243 252);
+  font-variant-numeric: tabular-nums;
+}
+
+.atlas-paginator select,
+.atlas-paginator button {
+  min-height: 2rem;
+  border: 1px solid rgb(71 85 105);
+  border-radius: 0.375rem;
+  background: rgb(30 41 59);
+  color: rgb(207 250 254);
+}
+
+.atlas-paginator select {
+  padding: 0 0.5rem;
+}
+
+.atlas-paginator button {
+  min-width: 2rem;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
+.atlas-paginator :is(select, button):hover:not(:disabled) {
+  border-color: rgb(103 232 249);
+  background: rgb(34 211 238 / 0.16);
+}
+
+.atlas-paginator :is(select, button):disabled {
+  color: rgb(100 116 139);
+}

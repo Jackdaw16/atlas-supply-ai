@@ -15,10 +15,49 @@ public sealed class SupplierRepository(AtlasSupplyDbContext dbContext) : ISuppli
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<PagedResult<Supplier>> PageAsync(SupplierPageRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var suppliers = dbContext.Suppliers.AsNoTracking();
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            var search = $"%{request.Search.Trim()}%";
+            suppliers = suppliers.Where(supplier =>
+                EF.Functions.ILike(supplier.Name, search)
+                || (supplier.ContactEmail != null && EF.Functions.ILike(supplier.ContactEmail, search)));
+        }
+
+        var totalCount = await suppliers.CountAsync(cancellationToken);
+        var items = await suppliers
+            .OrderBy(supplier => supplier.Name)
+            .ThenBy(supplier => supplier.Id)
+            .Skip(request.Page.PageIndex * request.Page.PageSize)
+            .Take(request.Page.PageSize)
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<Supplier>(items, totalCount);
+    }
+
     public Task<Supplier?> GetByIdAsync(Guid id, CancellationToken cancellationToken)
     {
         return dbContext.Suppliers
             .AsNoTracking()
             .SingleOrDefaultAsync(supplier => supplier.Id == id, cancellationToken);
     }
+
+    public Task<Supplier?> GetForUpdateAsync(Guid id, CancellationToken cancellationToken)
+    {
+        return dbContext.Suppliers
+            .SingleOrDefaultAsync(supplier => supplier.Id == id, cancellationToken);
+    }
+
+    public async Task CreateAsync(Supplier supplier, CancellationToken cancellationToken)
+    {
+        await dbContext.Suppliers.AddAsync(supplier, cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public Task UpdateAsync(Supplier supplier, CancellationToken cancellationToken) =>
+        dbContext.SaveChangesAsync(cancellationToken);
 }

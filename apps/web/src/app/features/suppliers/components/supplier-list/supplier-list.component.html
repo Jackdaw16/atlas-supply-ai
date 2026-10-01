@@ -1,0 +1,102 @@
+<section class="supplier-workspace flex min-h-0 flex-1 flex-col" aria-labelledby="supplier-heading">
+  <header class="flex shrink-0 flex-col gap-4 border-b border-slate-800/70 bg-[#0d1726] px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+    <div>
+      <p class="m-0 text-[11px] font-bold uppercase tracking-[0.16em] text-cyan-300">Supplier directory</p>
+      <h1 id="supplier-heading" class="mb-0 mt-1 text-xl font-semibold tracking-tight text-slate-100">Manage supplier relationships</h1>
+    </div>
+    <button mat-flat-button type="button" class="atlas-icon-label-control shrink-0" (click)="createSupplier()" [disabled]="isSaving()">
+      <mat-icon class="atlas-icon">add</mat-icon>
+      Add supplier
+    </button>
+  </header>
+
+  <div class="min-h-0 flex-1 overflow-y-auto px-4 py-5 md:px-6">
+    @if (errorMessage(); as error) {
+      <div class="mb-5 flex items-start justify-between gap-3 rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-2.5 text-sm text-red-100" role="alert">
+        <span>{{ error }}</span>
+        <button mat-icon-button type="button" class="atlas-icon-control" aria-label="Retry loading suppliers" (click)="reload()">
+          <mat-icon class="atlas-icon">refresh</mat-icon>
+        </button>
+      </div>
+    }
+
+    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic" class="search-field w-full sm:max-w-sm">
+        <mat-label>Search suppliers</mat-label>
+        <input matInput [ngModel]="search()" (ngModelChange)="updateSearch($event)" placeholder="Name or email" />
+        <mat-icon matSuffix class="atlas-icon">search</mat-icon>
+      </mat-form-field>
+      <p class="m-0 text-xs text-slate-400">{{ totalCount() }} supplier{{ totalCount() === 1 ? '' : 's' }}</p>
+    </div>
+
+    @if (isLoading()) {
+      <div class="flex min-h-56 items-center justify-center gap-3 text-sm text-slate-400" aria-live="polite">
+        <mat-spinner diameter="22" />
+        Loading suppliers...
+      </div>
+    } @else if (suppliers().length === 0) {
+      <div class="flex min-h-56 flex-col items-center justify-center rounded-xl border border-dashed border-slate-700 bg-slate-950/20 px-5 text-center">
+        <mat-icon class="atlas-icon mb-3 text-slate-500">inventory_2</mat-icon>
+        <p class="m-0 text-sm font-medium text-slate-200">No suppliers found</p>
+        <p class="mb-0 mt-1 text-sm text-slate-400">Adjust the search or add a supplier to get started.</p>
+      </div>
+    } @else {
+      <div class="grid gap-5 xl:grid-cols-[minmax(0,1fr)_18rem]">
+        <div class="overflow-hidden rounded-xl border border-slate-700/60 bg-slate-950/25">
+          <div class="table-viewport">
+            <table class="w-full min-w-[42.5rem] border-collapse text-left">
+              <thead class="bg-slate-900/75 text-[11px] font-bold uppercase tracking-[0.13em] text-slate-400">
+                <tr>
+                  <th class="px-4 py-3">Supplier</th>
+                  <th class="px-4 py-3">Contact email</th>
+                  <th class="px-4 py-3">Status</th>
+                  <th class="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/90 text-sm">
+                @for (supplier of suppliers(); track supplier.id) {
+                  <tr class="supplier-row cursor-pointer text-slate-200" [class.is-selected]="selectedSupplier()?.id === supplier.id" (click)="selectSupplier(supplier)">
+                    <td class="px-4 py-3.5 font-medium">{{ supplier.name }}</td>
+                    <td class="px-4 py-3.5 text-slate-400">{{ supplier.contactEmail || 'No contact email' }}</td>
+                    <td class="px-4 py-3.5">
+                      <span class="rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide" [class.status-active]="supplier.isActive" [class.status-inactive]="!supplier.isActive">
+                        {{ supplier.isActive ? 'Active' : 'Inactive' }}
+                      </span>
+                    </td>
+                    <td class="px-4 py-3.5 text-right" (click)="$event.stopPropagation()">
+                      <div class="supplier-actions inline-flex items-center justify-end gap-1 whitespace-nowrap">
+                        <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="'View ' + supplier.name" [matTooltip]="'View ' + supplier.name" (click)="selectSupplier(supplier)">
+                          <mat-icon class="atlas-icon">visibility</mat-icon>
+                        </button>
+                        <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="'Edit ' + supplier.name" [matTooltip]="'Edit ' + supplier.name" [disabled]="isSaving()" (click)="editSupplier(supplier)">
+                          <mat-icon class="atlas-icon">edit</mat-icon>
+                        </button>
+                        <button mat-icon-button type="button" class="atlas-icon-control" [attr.aria-label]="(supplier.isActive ? 'Deactivate ' : 'Activate ') + supplier.name" [matTooltip]="supplier.isActive ? 'Deactivate supplier' : 'Activate supplier'" [disabled]="isSaving()" (click)="toggleSupplier(supplier)">
+                          <mat-icon class="atlas-icon">{{ supplier.isActive ? 'toggle_on' : 'toggle_off' }}</mat-icon>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          <app-atlas-paginator [totalCount]="totalCount()" [pageIndex]="pageIndex()" [pageSize]="pageSize()" [disabled]="isSaving()" [loading]="isLoading()" (pageChange)="changePage($event)" />
+        </div>
+
+        <aside class="h-fit rounded-xl border border-cyan-300/10 bg-slate-950/35 p-4" aria-live="polite">
+          <p class="m-0 text-[11px] font-bold uppercase tracking-[0.14em] text-cyan-300">Supplier details</p>
+          @if (selectedSupplier(); as supplier) {
+            <h2 class="mb-1 mt-3 text-base font-semibold text-slate-100">{{ supplier.name }}</h2>
+            <p class="m-0 break-all text-sm text-slate-400">{{ supplier.contactEmail || 'No contact email recorded' }}</p>
+            <p class="mb-0 mt-4 text-xs font-semibold uppercase tracking-wide" [class.text-emerald-300]="supplier.isActive" [class.text-amber-300]="!supplier.isActive">
+              {{ supplier.isActive ? 'Active supplier' : 'Inactive supplier' }}
+            </p>
+          } @else {
+            <p class="mb-0 mt-3 text-sm leading-6 text-slate-400">Select a supplier from the list to review its current contact and status.</p>
+          }
+        </aside>
+      </div>
+    }
+  </div>
+</section>
