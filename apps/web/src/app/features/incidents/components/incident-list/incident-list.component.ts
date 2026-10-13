@@ -20,6 +20,7 @@ import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/co
 import { Incident, IncidentStatus, IncidentType } from '../../models/incident.models';
 import { IncidentPageQuery, IncidentService } from '../../services/incident.service';
 import { IncidentFormDialogComponent } from '../incident-form-dialog/incident-form-dialog.component';
+import { WebMcpToolsService } from '../../../../core/webmcp/webmcp-tools.service';
 
 @Component({
   selector: 'app-incident-list',
@@ -47,6 +48,7 @@ export class IncidentListComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly webMcpTools = inject(WebMcpToolsService);
 
   protected readonly incidents = signal<Incident[]>([]);
   protected readonly suppliers = signal<Supplier[]>([]);
@@ -67,6 +69,10 @@ export class IncidentListComponent {
   protected readonly typeOptions: IncidentType[] = ['Delay', 'QualityIssue', 'ShortShipment', 'DamagedGoods', 'Other'];
 
   constructor() {
+    this.webMcpTools.registerIncidentTools(this.destroyRef, (incident) => {
+      this.selectedIncident.set(incident);
+      return true;
+    });
     this.reload();
   }
 

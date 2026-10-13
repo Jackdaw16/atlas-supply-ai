@@ -1,20 +1,29 @@
 import { HttpClient } from '@angular/common/http';
-import { inject, Injectable, signal } from '@angular/core';
+import { DestroyRef, inject, Injectable, NgZone, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { CHAT_API_CONFIG } from '../services/chat-api.config';
 import { AuthSession, LoginRequest } from './auth.models';
 
 export const AUTH_SESSION_STORAGE_KEY = 'atlas-supply.auth-session';
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly http = inject(HttpClient);
   private readonly router = inject(Router);
   private readonly apiConfig = inject(CHAT_API_CONFIG);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly zone = inject(NgZone);
+  private expiryTimer: ReturnType<typeof setTimeout> | undefined;
   private readonly sessionState = signal<AuthSession | null>(this.readSession());
 
   readonly session = this.sessionState.asReadonly();
+
+  constructor() {
+    this.destroyRef.onDestroy(() => this.clearExpiryTimer());
+    this.scheduleExpiry(this.sessionState());
+  }
 
   get accessToken(): string | null {
     return this.getValidSession()?.accessToken ?? null;
@@ -56,7 +65,7 @@ export class AuthService {
     const session = this.sessionState();
 
     if (session && this.isExpired(session)) {
-      this.clearSession();
+      this.handleUnauthorized();
       return null;
     }
 
@@ -64,6 +73,11 @@ export class AuthService {
   }
 
   private persistSession(session: AuthSession): void {
+    if (!this.isValidSession(session) || this.isExpired(session)) {
+      this.handleUnauthorized();
+      return;
+    }
+
     const normalizedSession: AuthSession = {
       accessToken: session.accessToken,
       expiresAtUtc: session.expiresAtUtc,
@@ -73,9 +87,11 @@ export class AuthService {
 
     this.getStorage()?.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(normalizedSession));
     this.sessionState.set(normalizedSession);
+    this.scheduleExpiry(normalizedSession);
   }
 
   private clearSession(): void {
+    this.clearExpiryTimer();
     this.getStorage()?.removeItem(AUTH_SESSION_STORAGE_KEY);
     this.sessionState.set(null);
   }
@@ -111,6 +127,43 @@ export class AuthService {
   private isExpired(session: AuthSession): boolean {
     const expiresAt = Date.parse(session.expiresAtUtc);
     return Number.isNaN(expiresAt) || expiresAt <= Date.now();
+  }
+
+  private scheduleExpiry(session: AuthSession | null): void {
+    this.clearExpiryTimer();
+    if (!session) {
+      return;
+    }
+
+    const expiresAt = Date.parse(session.expiresAtUtc);
+    if (Number.isNaN(expiresAt) || expiresAt <= Date.now()) {
+      this.handleUnauthorized();
+      return;
+    }
+
+    const delay = Math.min(expiresAt - Date.now(), MAX_TIMER_DELAY_MS);
+    this.expiryTimer = this.zone.runOutsideAngular(() => setTimeout(() => {
+      this.expiryTimer = undefined;
+      this.zone.run(() => {
+        if (this.sessionState() !== session) {
+          return;
+        }
+
+        if (this.isExpired(session)) {
+          this.handleUnauthorized();
+          return;
+        }
+
+        this.scheduleExpiry(session);
+      });
+    }, delay));
+  }
+
+  private clearExpiryTimer(): void {
+    if (this.expiryTimer !== undefined) {
+      clearTimeout(this.expiryTimer);
+      this.expiryTimer = undefined;
+    }
   }
 
   private getStorage(): Storage | null {

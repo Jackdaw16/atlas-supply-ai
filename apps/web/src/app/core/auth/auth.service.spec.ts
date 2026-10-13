@@ -18,6 +18,7 @@ describe('AuthService and authentication HTTP integration', () => {
   };
 
   afterEach(() => {
+    vi.useRealTimers();
     TestBed.resetTestingModule();
     sessionStorage.clear();
   });
@@ -68,6 +69,40 @@ describe('AuthService and authentication HTTP integration', () => {
     expect(authService.hasValidSession()).toBe(false);
     expect(authService.accessToken).toBeNull();
     expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    http.verify();
+  });
+
+  it('passively expires a restored session through the unauthorized cleanup path', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2029-01-01T00:00:00.000Z'));
+    sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify({
+      ...activeSession,
+      expiresAtUtc: '2029-01-01T00:00:01.000Z'
+    }));
+    const { authService, router, http } = configureTestBed();
+
+    vi.advanceTimersByTime(1_000);
+
+    expect(authService.session()).toBeNull();
+    expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
+    http.verify();
+  });
+
+  it('schedules expiry for a newly persisted login session', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2029-01-01T00:00:00.000Z'));
+    const { authService, router, http } = configureTestBed();
+
+    authService.login({ username: 'operator-user', password: 'password' }).subscribe();
+    http.expectOne('/api/auth/login').flush({
+      ...activeSession,
+      expiresAtUtc: '2029-01-01T00:00:01.000Z'
+    });
+    vi.advanceTimersByTime(1_000);
+
+    expect(authService.session()).toBeNull();
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
     http.verify();
   });
 

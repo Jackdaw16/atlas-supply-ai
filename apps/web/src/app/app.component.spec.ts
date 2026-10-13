@@ -10,7 +10,12 @@ import { AppComponent } from './app.component';
 import { AuthService } from './core/auth/auth.service';
 
 describe('AppComponent navigation shell', () => {
-  afterEach(() => TestBed.resetTestingModule());
+  const originalUrl = window.location.href;
+
+  afterEach(() => {
+    window.history.replaceState({}, '', originalUrl);
+    TestBed.resetTestingModule();
+  });
 
   it('pins the desktop drawer open and does not render a menu toggle', () => {
     const fixture = createFixture(false);
@@ -55,6 +60,18 @@ describe('AppComponent navigation shell', () => {
     supplierLink.blur();
 
     expect(supplierLink.classList.contains('drawer-link-active')).toBe(true);
+  });
+
+  it('renders WebMCP diagnostics only when the development debug query parameter is present', () => {
+    const withoutDebug = createFixture(false);
+
+    expect(withoutDebug.nativeElement.querySelector('app-webmcp-diagnostics-panel')).toBeNull();
+    TestBed.resetTestingModule();
+    window.history.replaceState({}, '', '?webmcpDebug=1');
+
+    const withDebug = createFixture(false);
+
+    expect(withDebug.nativeElement.querySelector('app-webmcp-diagnostics-panel')).not.toBeNull();
   });
 });
 

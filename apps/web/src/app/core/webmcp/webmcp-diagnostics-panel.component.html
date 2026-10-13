@@ -1,0 +1,50 @@
+<aside class="webmcp-diagnostics" aria-label="WebMCP diagnostics">
+  <div class="webmcp-diagnostics__heading">WEBMCP DIAGNOSTICS</div>
+
+  <dl class="webmcp-diagnostics__summary">
+    <div>
+      <dt>WebMCP API available</dt>
+      <dd [class.is-available]="registry.diagnostics().webMcpApiAvailable">
+        {{ registry.diagnostics().webMcpApiAvailable ? 'YES' : 'NO' }}
+      </dd>
+    </div>
+    <div>
+      <dt>document.modelContext available</dt>
+      <dd [class.is-available]="registry.diagnostics().modelContextAvailable">
+        {{ registry.diagnostics().modelContextAvailable ? 'YES' : 'NO' }}
+      </dd>
+    </div>
+  </dl>
+
+  @if (!registry.diagnostics().modelContextAvailable) {
+    <p class="webmcp-diagnostics__reason">Reason: document.modelContext is undefined</p>
+  }
+
+  <section class="webmcp-diagnostics__section" aria-label="Active tool registrations">
+    <div class="webmcp-diagnostics__label">
+      AtlasSupply tools registered <span>{{ registry.diagnostics().registeredToolNames.length }}</span>
+    </div>
+    @if (registry.diagnostics().registeredToolNames.length) {
+      <ul class="webmcp-diagnostics__list">
+        @for (toolName of registry.diagnostics().registeredToolNames; track toolName) {
+          <li><span aria-hidden="true">✓</span>{{ toolName }}</li>
+        }
+      </ul>
+    } @else {
+      <p class="webmcp-diagnostics__empty">None</p>
+    }
+  </section>
+
+  <section class="webmcp-diagnostics__section" aria-label="Registration errors">
+    <div class="webmcp-diagnostics__label">Registration errors</div>
+    @if (registry.diagnostics().registrationErrors.length) {
+      <ul class="webmcp-diagnostics__list webmcp-diagnostics__errors">
+        @for (error of registry.diagnostics().registrationErrors; track error.toolName) {
+          <li><strong>{{ error.toolName }}</strong><span>{{ error.message }}</span></li>
+        }
+      </ul>
+    } @else {
+      <p class="webmcp-diagnostics__empty">None</p>
+    }
+  </section>
+</aside>

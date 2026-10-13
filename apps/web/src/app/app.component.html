@@ -75,3 +75,7 @@
 } @else {
   <router-outlet />
 }
+
+@if (isWebMcpDebugEnabled) {
+  <app-webmcp-diagnostics-panel />
+}

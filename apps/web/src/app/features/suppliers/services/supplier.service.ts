@@ -21,6 +21,10 @@ export class SupplierService {
     return this.http.get<PagedResponse<Supplier>>(`${this.apiConfig.baseUrl}/api/suppliers/page`, { params });
   }
 
+  get(id: string) {
+    return this.http.get<Supplier>(`${this.apiConfig.baseUrl}/api/suppliers/${id}`);
+  }
+
   create(request: SupplierRequest) {
     return this.http.post<Supplier>(`${this.apiConfig.baseUrl}/api/suppliers`, request);
   }
