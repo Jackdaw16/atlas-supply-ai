@@ -1,6 +1,6 @@
 <article class="flex" [class.justify-end]="message().role === 'user'">
   <div
-    class="max-w-[90%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm md:max-w-[76%] md:px-5"
+    class="message-bubble rounded-2xl text-sm leading-6 shadow-sm"
     [class.assistant-message]="isAssistant()"
     [class.bg-sky-500]="message().role === 'user'"
     [class.text-white]="message().role === 'user'"
@@ -8,7 +8,20 @@
     [class.bg-[#172235]]="isAssistant()"
     [class.text-slate-100]="isAssistant()">
     @if (isAssistant()) {
-      <div class="markdown-content" [innerHTML]="renderedAssistantContent()"></div>
+      @if (message().content) {
+        <div class="markdown-content" [innerHTML]="renderedAssistantContent()"></div>
+      }
+
+      @if (isPendingAssistant()) {
+        <div class="pending-indicator" aria-live="polite">
+          <span class="pending-indicator__dot" aria-hidden="true"></span>
+          @if (pendingStatusLabel(); as statusLabel) {
+            <span>{{ statusLabel }}</span>
+          } @else {
+            <span class="pending-indicator__placeholder">&nbsp;</span>
+          }
+        </div>
+      }
     } @else {
       <p class="m-0 whitespace-pre-wrap">{{ message().content }}</p>
     }

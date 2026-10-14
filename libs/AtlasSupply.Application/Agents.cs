@@ -11,6 +11,47 @@ public sealed record AgentChatResult(
     IReadOnlyList<string> ToolsUsed,
     IReadOnlyList<KnowledgeSearchResult> RagSources);
 
+public delegate ValueTask AgentProgressSink(
+    IAgentProgressUpdate update,
+    CancellationToken cancellationToken);
+
+public interface IAgentProgressUpdate
+{
+    string EventType { get; }
+}
+
+public sealed record AgentToolStartedProgress(
+    string ToolCallId,
+    string ToolName) : IAgentProgressUpdate
+{
+    public string EventType => "tool_started";
+}
+
+public sealed record AgentToolFinishedProgress(
+    string ToolCallId,
+    string ToolName,
+    bool IsError) : IAgentProgressUpdate
+{
+    public string EventType => "tool_finished";
+}
+
+public sealed record AgentRagSearchStartedProgress(
+    string ToolCallId,
+    string Query,
+    int TopK) : IAgentProgressUpdate
+{
+    public string EventType => "rag_started";
+}
+
+public sealed record AgentRagSearchFinishedProgress(
+    string ToolCallId,
+    string Query,
+    int TopK,
+    IReadOnlyList<KnowledgeSearchResult> Sources) : IAgentProgressUpdate
+{
+    public string EventType => "rag_finished";
+}
+
 public sealed record AgentToolDefinition(
     string Name,
     string Description,
@@ -186,6 +227,15 @@ public sealed class AgentService(
         AgentAuthorizationContext authorizationContext,
         CancellationToken cancellationToken)
     {
+        return await ChatAsync(request, authorizationContext, progressSink: null, cancellationToken);
+    }
+
+    public async Task<AgentChatResult> ChatAsync(
+        AgentChatRequest request,
+        AgentAuthorizationContext authorizationContext,
+        AgentProgressSink? progressSink,
+        CancellationToken cancellationToken)
+    {
         var message = ValidateMessage(request);
         ArgumentNullException.ThrowIfNull(authorizationContext);
 
@@ -267,12 +317,17 @@ public sealed class AgentService(
                     throw new InvalidOperationException($"Agent requested unavailable tool '{toolCall.Name}'.");
                 }
 
+                await ReportProgressAsync(
+                    progressSink,
+                    new AgentToolStartedProgress(toolCall.Id, toolCall.Name),
+                    cancellationToken);
+
                 AgentToolExecutionResult result;
                 try
                 {
                     if (toolCall.Name == AgentToolCapabilityMap.SearchKnowledgeToolName)
                     {
-                        result = await SearchKnowledgeAsync(toolCall, ragSources, cancellationToken);
+                        result = await SearchKnowledgeAsync(toolCall, ragSources, progressSink, cancellationToken);
                     }
                     else
                     {
@@ -286,6 +341,10 @@ public sealed class AgentService(
                 {
                     auditRecord.Complete(succeeded: false, "ToolExecutionFailed");
                     await FinalizeAuditAsync(auditRecord, cancellationToken);
+                    await ReportProgressAsync(
+                        progressSink,
+                        new AgentToolFinishedProgress(toolCall.Id, toolCall.Name, IsError: true),
+                        cancellationToken);
                     throw;
                 }
 
@@ -296,6 +355,10 @@ public sealed class AgentService(
 
                 toolsUsed.Add(toolCall.Name);
                 messages.Add(new AgentToolMessage(toolCall.Id, toolCall.Name, result.Content, result.IsError));
+                await ReportProgressAsync(
+                    progressSink,
+                    new AgentToolFinishedProgress(toolCall.Id, toolCall.Name, result.IsError),
+                    cancellationToken);
             }
 
             toolRounds++;
@@ -669,6 +732,7 @@ public sealed class AgentService(
     private async Task<AgentToolExecutionResult> SearchKnowledgeAsync(
         AgentToolCall toolCall,
         List<KnowledgeSearchResult> ragSources,
+        AgentProgressSink? progressSink,
         CancellationToken cancellationToken)
     {
         JsonElement arguments;
@@ -690,6 +754,8 @@ public sealed class AgentService(
                 IsError: true);
         }
 
+        var queryText = query.GetString()!;
+
         var topK = 5;
         if (arguments.TryGetProperty("topK", out var topKProperty) && !topKProperty.TryGetInt32(out topK))
         {
@@ -698,13 +764,33 @@ public sealed class AgentService(
                 IsError: true);
         }
 
+        await ReportProgressAsync(
+            progressSink,
+            new AgentRagSearchStartedProgress(toolCall.Id, queryText, topK),
+            cancellationToken);
+
         var results = await knowledgeRetrievalService.SearchAsync(
-            new KnowledgeSearchInput(query.GetString()!, topK),
+            new KnowledgeSearchInput(queryText, topK),
             cancellationToken);
         ragSources.AddRange(results);
+
+        await ReportProgressAsync(
+            progressSink,
+            new AgentRagSearchFinishedProgress(toolCall.Id, queryText, topK, results),
+            cancellationToken);
 
         return new AgentToolExecutionResult(
             JsonSerializer.Serialize(new { sources = results }),
             IsError: false);
+    }
+
+    private static ValueTask ReportProgressAsync(
+        AgentProgressSink? progressSink,
+        IAgentProgressUpdate update,
+        CancellationToken cancellationToken)
+    {
+        return progressSink is null
+            ? ValueTask.CompletedTask
+            : progressSink(update, cancellationToken);
     }
 }

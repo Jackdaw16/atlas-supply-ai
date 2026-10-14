@@ -9,8 +9,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ChatMessageComponent } from '../chat-message/chat-message.component';
-import { ChatMessage } from '../../models/chat-message.models';
-import { ChatService } from '../../services/chat.service';
+import { ChatMessage, ChatPendingStatus } from '../../models/chat-message.models';
+import { ChatService, ChatStreamEvent } from '../../services/chat.service';
 
 @Component({
   selector: 'app-chat',
@@ -38,6 +38,10 @@ export class ChatComponent {
   protected readonly errorMessage = signal<string | null>(null);
   protected readonly messages = signal<ChatMessage[]>([]);
 
+  constructor() {
+    this.destroyRef.onDestroy(() => this.chatService.abortActiveStream());
+  }
+
   protected send(): void {
     const content = this.draft.trim();
 
@@ -49,18 +53,16 @@ export class ChatComponent {
     this.messages.update((messages) => [...messages, this.createMessage('user', content)]);
     this.draft = '';
     this.isPending.set(true);
+    const pendingMessageId = this.appendPendingAssistantMessage();
 
     this.chatService.send({ message: content })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
-        next: (response) => {
-          this.messages.update((messages) => [
-            ...messages,
-            this.createMessage('assistant', response.message, response.toolsUsed, response.ragSources)
-          ]);
-          this.isPending.set(false);
+        next: (event) => {
+          this.handleStreamEvent(event, pendingMessageId);
         },
         error: (error: unknown) => {
+          this.removeMessage(pendingMessageId);
           this.draft = content;
           this.errorMessage.set(this.toErrorMessage(error));
           this.isPending.set(false);
@@ -79,10 +81,46 @@ export class ChatComponent {
     role: ChatMessage['role'],
     content: string,
     toolsUsed?: string[],
-    ragSources?: ChatMessage['ragSources']
+    ragSources?: ChatMessage['ragSources'],
+    options?: Pick<ChatMessage, 'isPending' | 'pendingStatus'>
   ): ChatMessage {
     this.messageId += 1;
-    return { id: this.messageId, role, content, toolsUsed, ragSources };
+    return { id: this.messageId, role, content, toolsUsed, ragSources, ...options };
+  }
+
+  private appendPendingAssistantMessage(): number {
+    const pendingMessage = this.createMessage('assistant', '', undefined, undefined, { isPending: true });
+    this.messages.update((messages) => [...messages, pendingMessage]);
+    return pendingMessage.id;
+  }
+
+  private handleStreamEvent(event: ChatStreamEvent, pendingMessageId: number): void {
+    if (event.type === 'status') {
+      this.updatePendingMessage(pendingMessageId, event.status);
+      return;
+    }
+
+    this.messages.update((messages) => messages.map((message) => message.id === pendingMessageId
+      ? {
+        ...message,
+        content: event.response.message,
+        toolsUsed: event.response.toolsUsed,
+        ragSources: event.response.ragSources,
+        isPending: false,
+        pendingStatus: undefined
+      }
+      : message));
+    this.isPending.set(false);
+  }
+
+  private updatePendingMessage(messageId: number, pendingStatus: ChatPendingStatus): void {
+    this.messages.update((messages) => messages.map((message) => message.id === messageId
+      ? { ...message, isPending: true, pendingStatus }
+      : message));
+  }
+
+  private removeMessage(messageId: number): void {
+    this.messages.update((messages) => messages.filter((message) => message.id !== messageId));
   }
 
   private toErrorMessage(error: unknown): string {

@@ -2,10 +2,38 @@
   display: block;
 }
 
+.message-bubble {
+  max-width: 90%;
+  padding: 0.875rem 1rem;
+}
+
 .assistant-message {
-  max-width: min(92%, 48rem);
-  padding: 1rem 1.25rem;
+  --markdown-block-gap: 0.875rem;
   line-height: 1.75;
+}
+
+.pending-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 1.5rem;
+  color: rgb(148 163 184);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.pending-indicator__dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 9999px;
+  background: rgb(103 232 249);
+  box-shadow: 0 0 0 0.2rem rgb(34 211 238 / 0.12);
+}
+
+.pending-indicator__placeholder {
+  display: inline-block;
+  min-width: 0.75rem;
 }
 
 .assistant-message:has(.markdown-content table) {
@@ -31,7 +59,7 @@
 .markdown-content blockquote,
 .markdown-content pre,
 .markdown-content table {
-  margin: 0.75rem 0;
+  margin: var(--markdown-block-gap) 0;
 }
 
 .markdown-content ul,
@@ -40,7 +68,11 @@
 }
 
 .markdown-content li + li {
-  margin-top: 0.2rem;
+  margin-top: 0.25rem;
+}
+
+.markdown-content + .pending-indicator {
+  margin-top: var(--markdown-block-gap);
 }
 
 .markdown-content :not(pre) > code {
@@ -140,8 +172,9 @@
 }
 
 @media (min-width: 48rem) {
-  .assistant-message {
-    max-width: min(72%, 46rem);
+  .message-bubble {
+    max-width: min(76%, 46rem);
+    padding: 1rem 1.25rem;
   }
 
   .assistant-message:has(.markdown-content table) {
