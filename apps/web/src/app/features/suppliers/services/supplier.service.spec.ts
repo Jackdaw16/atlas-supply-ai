@@ -33,6 +33,11 @@ describe('SupplierService', () => {
     expect(pageRequest.request.params.get('search')).toBe('northstar');
     pageRequest.flush({ items: [supplier], totalCount: 1 });
 
+    service.get(supplier.id).subscribe();
+    const getRequest = http.expectOne('https://api.atlas.test/api/suppliers/supplier-1');
+    expect(getRequest.request.method).toBe('GET');
+    getRequest.flush(supplier);
+
     service.create({ name: supplier.name, contactEmail: null }).subscribe();
     const createRequest = http.expectOne('https://api.atlas.test/api/suppliers');
     expect(createRequest.request.method).toBe('POST');

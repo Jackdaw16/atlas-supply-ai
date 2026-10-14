@@ -18,6 +18,7 @@ import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/co
 import { PurchaseOrder, PurchaseOrderStatus } from '../../models/purchase-order.models';
 import { PurchaseOrderPageQuery, PurchaseOrderService } from '../../services/purchase-order.service';
 import { PurchaseOrderFormDialogComponent } from '../purchase-order-form-dialog/purchase-order-form-dialog.component';
+import { WebMcpToolsService } from '../../../../core/webmcp/webmcp-tools.service';
 
 @Component({
   selector: 'app-purchase-order-list',
@@ -44,6 +45,7 @@ export class PurchaseOrderListComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly webMcpTools = inject(WebMcpToolsService);
 
   protected readonly orders = signal<PurchaseOrder[]>([]);
   protected readonly suppliers = signal<Supplier[]>([]);
@@ -61,6 +63,10 @@ export class PurchaseOrderListComponent {
   protected readonly statusOptions: PurchaseOrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Received', 'Cancelled'];
 
   constructor() {
+    this.webMcpTools.registerOrderTools(this.destroyRef, (order) => {
+      this.selectedOrder.set(order);
+      return true;
+    });
     this.reload();
   }
 

@@ -1,0 +1,116 @@
+:host {
+  position: fixed;
+  z-index: 1000;
+  right: 1rem;
+  bottom: 1rem;
+  width: min(22rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.webmcp-diagnostics {
+  overflow: hidden;
+  border: 1px solid rgb(103 232 249 / 0.28);
+  border-radius: 0.625rem;
+  background: rgb(7 18 33 / 0.96);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.04);
+  color: rgb(226 232 240);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+}
+
+.webmcp-diagnostics__heading {
+  padding: 0.5rem 0.625rem;
+  border-bottom: 1px solid rgb(103 232 249 / 0.18);
+  background: rgb(14 42 58 / 0.72);
+  color: rgb(207 250 254);
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.webmcp-diagnostics__summary,
+.webmcp-diagnostics__section,
+.webmcp-diagnostics__reason {
+  margin: 0;
+  padding: 0.5rem 0.625rem;
+}
+
+.webmcp-diagnostics__summary {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.webmcp-diagnostics__summary > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.webmcp-diagnostics dt {
+  color: rgb(148 163 184);
+}
+
+.webmcp-diagnostics dd {
+  margin: 0;
+  color: rgb(251 113 133);
+  font-weight: 700;
+}
+
+.webmcp-diagnostics dd.is-available,
+.webmcp-diagnostics__list li > span:first-child {
+  color: rgb(103 232 249);
+}
+
+.webmcp-diagnostics__reason {
+  border-top: 1px solid rgb(251 191 36 / 0.16);
+  border-bottom: 1px solid rgb(251 191 36 / 0.16);
+  color: rgb(253 230 138);
+}
+
+.webmcp-diagnostics__section + .webmcp-diagnostics__section {
+  border-top: 1px solid rgb(148 163 184 / 0.12);
+}
+
+.webmcp-diagnostics__label {
+  color: rgb(148 163 184);
+}
+
+.webmcp-diagnostics__label span {
+  margin-left: 0.25rem;
+  color: rgb(241 245 249);
+  font-weight: 700;
+}
+
+.webmcp-diagnostics__list {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.webmcp-diagnostics__list li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.375rem;
+  min-width: 0;
+  color: rgb(226 232 240);
+  overflow-wrap: anywhere;
+}
+
+.webmcp-diagnostics__empty {
+  margin: 0.25rem 0 0;
+  color: rgb(100 116 139);
+}
+
+.webmcp-diagnostics__errors li {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 0;
+  color: rgb(254 202 202);
+}
+
+.webmcp-diagnostics__errors strong {
+  color: rgb(253 164 175);
+}

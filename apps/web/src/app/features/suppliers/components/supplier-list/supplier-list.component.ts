@@ -15,6 +15,7 @@ import { Supplier, SupplierRequest } from '../../models/supplier.models';
 import { SupplierService } from '../../services/supplier.service';
 import { SupplierFormDialogComponent } from '../supplier-form-dialog/supplier-form-dialog.component';
 import { AtlasPaginatorComponent, PaginationChange } from '../../../../shared/components/paginator/atlas-paginator.component';
+import { WebMcpToolsService } from '../../../../core/webmcp/webmcp-tools.service';
 
 @Component({
   selector: 'app-supplier-list',
@@ -39,6 +40,7 @@ export class SupplierListComponent {
   private readonly dialog = inject(MatDialog);
   private readonly snackBar = inject(MatSnackBar);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly webMcpTools = inject(WebMcpToolsService);
 
   protected readonly suppliers = signal<Supplier[]>([]);
   protected readonly search = signal('');
@@ -51,6 +53,10 @@ export class SupplierListComponent {
   protected readonly pageSize = signal(25);
 
   constructor() {
+    this.webMcpTools.registerSupplierTools(this.destroyRef, (supplier) => {
+      this.selectedSupplier.set(supplier);
+      return true;
+    });
     this.reload();
   }
 
