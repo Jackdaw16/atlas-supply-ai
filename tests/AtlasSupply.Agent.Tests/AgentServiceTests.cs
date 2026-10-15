@@ -84,6 +84,107 @@ public sealed class AgentServiceTests
     }
 
     [Fact]
+    public async Task ChatAsync_PreservesValidatedHistoryBeforeExactlyOneCurrentUserMessage()
+    {
+        var languageModel = new ScriptedLanguageModel(Final("Conversation continued."));
+        var service = CreateService(
+            languageModel,
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService());
+
+        await service.ChatAsync(
+            new AgentChatRequest(
+                "  What is next?  ",
+                [
+                    new AgentChatHistoryItem("user", "  What happened?  "),
+                    new AgentChatHistoryItem("assistant", "  The shipment was delayed.  ")
+                ]),
+            ReadOnlyAuthorization,
+            CancellationToken.None);
+
+        Assert.Collection(languageModel.Requests.Single().Messages,
+            message => Assert.Equal("What happened?", Assert.IsType<AgentUserMessage>(message).Content),
+            message =>
+            {
+                var assistant = Assert.IsType<AgentAssistantMessage>(message);
+                Assert.Equal("The shipment was delayed.", assistant.Content);
+                Assert.Empty(assistant.ToolCalls);
+            },
+            message => Assert.Equal("What is next?", Assert.IsType<AgentUserMessage>(message).Content));
+    }
+
+    [Fact]
+    public async Task ChatAsync_RejectsHistoryWithMoreThanTenMessages()
+    {
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Not reached.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService());
+        var history = Enumerable.Range(0, 11)
+            .Select(index => new AgentChatHistoryItem("user", $"Message {index}"))
+            .ToArray();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ChatAsync(
+            new AgentChatRequest("Current message", history),
+            ReadOnlyAuthorization,
+            CancellationToken.None));
+
+        Assert.Contains("cannot contain more than 10 messages", exception.Message);
+    }
+
+    [Fact]
+    public async Task ChatAsync_RejectsHistoryAboveUtf8ByteLimit()
+    {
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Not reached.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService());
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ChatAsync(
+            new AgentChatRequest(
+                "Current message",
+                [new AgentChatHistoryItem("user", new string('é', 8_193))]),
+            ReadOnlyAuthorization,
+            CancellationToken.None));
+
+        Assert.Contains("cannot exceed 16384 UTF-8 bytes", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("system")]
+    [InlineData("tool")]
+    public async Task ChatAsync_RejectsHistoryRolesOtherThanUserOrAssistant(string role)
+    {
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Not reached.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService());
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ChatAsync(
+            new AgentChatRequest("Current message", [new AgentChatHistoryItem(role, "Ignored")]),
+            ReadOnlyAuthorization,
+            CancellationToken.None));
+
+        Assert.Contains("roles must be either 'user' or 'assistant'", exception.Message);
+    }
+
+    [Fact]
+    public async Task ChatAsync_RejectsEmptyHistoryContent()
+    {
+        var service = CreateService(
+            new ScriptedLanguageModel(Final("Not reached.")),
+            new FakeToolSession(),
+            new FakeKnowledgeRetrievalService());
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() => service.ChatAsync(
+            new AgentChatRequest("Current message", [new AgentChatHistoryItem("user", "   ")]),
+            ReadOnlyAuthorization,
+            CancellationToken.None));
+
+        Assert.Contains("content is required", exception.Message);
+    }
+
+    [Fact]
     public async Task ChatAsync_UsesRagAndMcpToolsInReportedOrder()
     {
         var source = new KnowledgeSearchResult("docs/knowledge/purchasing.md", "hash", 0, "Rules", "Policy", 0.09);
