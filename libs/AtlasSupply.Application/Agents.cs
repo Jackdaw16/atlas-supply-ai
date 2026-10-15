@@ -1,10 +1,15 @@
+using System.Text;
 using System.Text.Json;
 using AtlasSupply.Domain;
 using Microsoft.Extensions.Logging;
 
 namespace AtlasSupply.Application;
 
-public sealed record AgentChatRequest(string Message);
+public sealed record AgentChatRequest(
+    string Message,
+    IReadOnlyList<AgentChatHistoryItem>? History = null);
+
+public sealed record AgentChatHistoryItem(string Role, string Content);
 
 public sealed record AgentChatResult(
     string Message,
@@ -200,6 +205,8 @@ public sealed class AgentService(
     IAgentRouter? agentRouter = null)
 {
     private const int MaximumMessageLength = 4_000;
+    private const int MaximumHistoryMessages = 10;
+    private const int MaximumHistoryContentBytes = 16 * 1024;
     private const int MaximumToolCallsPerCompletion = 8;
     private const int MaximumProviderReasonPhraseLength = 160;
     private const int MaximumProviderResponseExcerptLength = 400;
@@ -237,6 +244,8 @@ public sealed class AgentService(
         CancellationToken cancellationToken)
     {
         var message = ValidateMessage(request);
+        var messages = ValidateHistory(request!).ToList();
+        messages.Add(new AgentUserMessage(message));
         ArgumentNullException.ThrowIfNull(authorizationContext);
 
         await using var toolSession = await toolProvider.OpenSessionAsync(cancellationToken);
@@ -244,7 +253,6 @@ public sealed class AgentService(
         var tools = CreateToolCatalog(discoveredTools, authorizationContext);
         var toolsByName = tools.ToDictionary(tool => tool.Name, StringComparer.Ordinal);
         var systemInstructions = CreateSystemInstructions(authorizationContext);
-        var messages = new List<AgentMessage> { new AgentUserMessage(message) };
         var toolsUsed = new List<string>();
         var ragSources = new List<KnowledgeSearchResult>();
 
@@ -608,6 +616,58 @@ public sealed class AgentService(
         }
 
         return message;
+    }
+
+    private static IReadOnlyList<AgentMessage> ValidateHistory(AgentChatRequest request)
+    {
+        if (request.History is null)
+        {
+            return [];
+        }
+
+        if (request.History.Count > MaximumHistoryMessages)
+        {
+            throw new ArgumentException(
+                $"Chat history cannot contain more than {MaximumHistoryMessages} messages.",
+                nameof(request));
+        }
+
+        var messages = new List<AgentMessage>(request.History.Count);
+        var contentBytes = 0;
+
+        foreach (var item in request.History)
+        {
+            if (item is null)
+            {
+                throw new ArgumentException("Chat history items are required.", nameof(request));
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Content))
+            {
+                throw new ArgumentException("Chat history content is required.", nameof(request));
+            }
+
+            var itemContentBytes = Encoding.UTF8.GetByteCount(item.Content);
+            if (itemContentBytes > MaximumHistoryContentBytes - contentBytes)
+            {
+                throw new ArgumentException(
+                    $"Chat history content cannot exceed {MaximumHistoryContentBytes} UTF-8 bytes.",
+                    nameof(request));
+            }
+
+            contentBytes += itemContentBytes;
+            var content = item.Content.Trim();
+            messages.Add(item.Role switch
+            {
+                "user" => new AgentUserMessage(content),
+                "assistant" => new AgentAssistantMessage(content, []),
+                _ => throw new ArgumentException(
+                    "Chat history roles must be either 'user' or 'assistant'.",
+                    nameof(request))
+            });
+        }
+
+        return messages;
     }
 
     private static IReadOnlyList<AgentToolDefinition> CreateToolCatalog(

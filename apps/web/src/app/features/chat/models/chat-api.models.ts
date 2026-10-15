@@ -1,5 +1,8 @@
+import { ChatHistoryMessage } from './chat-message.models';
+
 export interface ChatRequest {
   message: string;
+  history: ChatHistoryMessage[];
 }
 
 export interface RagSource {

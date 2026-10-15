@@ -4,8 +4,9 @@ import { Router } from '@angular/router';
 import { tap } from 'rxjs';
 import { CHAT_API_CONFIG } from '../services/chat-api.config';
 import { AuthSession, LoginRequest } from './auth.models';
+import { AUTH_SESSION_STORAGE_KEY, CHAT_HISTORY_STORAGE_KEY_PREFIX } from './auth-storage-keys';
 
-export const AUTH_SESSION_STORAGE_KEY = 'atlas-supply.auth-session';
+export { AUTH_SESSION_STORAGE_KEY } from './auth-storage-keys';
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 @Injectable({ providedIn: 'root' })
@@ -92,7 +93,7 @@ export class AuthService {
 
   private clearSession(): void {
     this.clearExpiryTimer();
-    this.getStorage()?.removeItem(AUTH_SESSION_STORAGE_KEY);
+    this.clearStoredSession(this.sessionState());
     this.sessionState.set(null);
   }
 
@@ -105,7 +106,7 @@ export class AuthService {
     try {
       const session = JSON.parse(serializedSession) as Partial<AuthSession>;
       if (!this.isValidSession(session) || this.isExpired(session)) {
-        this.getStorage()?.removeItem(AUTH_SESSION_STORAGE_KEY);
+        this.clearStoredSession(session);
         return null;
       }
 
@@ -114,6 +115,19 @@ export class AuthService {
       this.getStorage()?.removeItem(AUTH_SESSION_STORAGE_KEY);
       return null;
     }
+  }
+
+  private clearStoredSession(session: Partial<AuthSession> | null): void {
+    const storage = this.getStorage();
+    if (!storage) {
+      return;
+    }
+
+    if (session && this.isValidSession(session)) {
+      storage.removeItem(`${CHAT_HISTORY_STORAGE_KEY_PREFIX}${encodeURIComponent(session.username)}`);
+    }
+
+    storage.removeItem(AUTH_SESSION_STORAGE_KEY);
   }
 
   private isValidSession(session: Partial<AuthSession>): session is AuthSession {

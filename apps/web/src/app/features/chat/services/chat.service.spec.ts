@@ -44,7 +44,7 @@ describe('ChatService SSE streaming', () => {
         Authorization: `Bearer ${activeSession.accessToken}`,
         'Content-Type': 'application/json'
       }),
-      body: JSON.stringify({ message: 'Which supplier orders are delayed?' })
+        body: JSON.stringify({ message: 'Which supplier orders are delayed?', history: [] })
     }));
     expect(events).toEqual([
       { type: 'status', status: 'processing' },
@@ -79,9 +79,9 @@ describe('ChatService SSE streaming', () => {
 
     const { service } = configureTestBed();
 
-    const firstSubscription = service.send({ message: 'First question' }).subscribe({ error: () => undefined });
+    const firstSubscription = service.send({ message: 'First question', history: [] }).subscribe({ error: () => undefined });
     await Promise.resolve();
-    service.send({ message: 'Second question' }).subscribe();
+    service.send({ message: 'Second question', history: [] }).subscribe();
     await Promise.resolve();
 
     expect(firstAbortSignal.current?.aborted).toBe(true);
@@ -112,7 +112,7 @@ function configureTestBed() {
 function collectStreamEvents(service: ChatService): Promise<unknown[]> {
   return new Promise((resolve, reject) => {
     const events: unknown[] = [];
-    service.send({ message: 'Which supplier orders are delayed?' }).subscribe({
+    service.send({ message: 'Which supplier orders are delayed?', history: [] }).subscribe({
       next: (event) => events.push(event),
       error: reject,
       complete: () => resolve(events)
