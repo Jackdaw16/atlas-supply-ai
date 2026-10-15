@@ -1,6 +1,8 @@
 using AtlasSupply.Application;
 using AtlasSupply.Domain;
 using System.Net.Mail;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace AtlasSupply.Api;
 
@@ -431,20 +433,7 @@ public static class ApiEndpoints
             HttpContext httpContext,
             CancellationToken cancellationToken) =>
         {
-            var userId = Guid.TryParse(httpContext.User.FindFirst("sub")?.Value, out var subjectId)
-                ? subjectId
-                : throw new InvalidOperationException("Validated token subject is invalid.");
-            var username = httpContext.User.Identity?.Name;
-            if (string.IsNullOrWhiteSpace(username))
-            {
-                throw new InvalidOperationException("Validated token username is missing.");
-            }
-
-            var authorizationContext = AgentAuthorizationContext.FromValidatedScopeClaimValues(
-                userId,
-                username,
-                httpContext.User.FindAll(AgentAuthorizationContext.ScopeClaimType)
-                    .Select(static claim => claim.Value));
+            var authorizationContext = CreateAuthorizationContext(httpContext.User);
             var result = await agentService.ChatAsync(request, authorizationContext, cancellationToken);
             return Results.Ok(result);
         })
@@ -453,6 +442,58 @@ public static class ApiEndpoints
             .RequireAuthorization()
             .Accepts<AgentChatRequest>("application/json")
             .Produces<AgentChatResult>(StatusCodes.Status200OK)
+            .ProducesValidationProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
+            .ProducesProblem(StatusCodes.Status500InternalServerError);
+
+        app.MapPost("/api/chat/stream", async (
+            AgentChatRequest request,
+            AgentService agentService,
+            HttpContext httpContext,
+            CancellationToken cancellationToken) =>
+        {
+            var authorizationContext = CreateAuthorizationContext(httpContext.User);
+            var response = httpContext.Response;
+            response.StatusCode = StatusCodes.Status200OK;
+            response.ContentType = "text/event-stream";
+            response.Headers.CacheControl = "no-cache";
+
+            try
+            {
+                var result = await agentService.ChatAsync(
+                    request,
+                    authorizationContext,
+                    (update, ct) => new ValueTask(WriteSseEventAsync(response, update.EventType, update, ct)),
+                    cancellationToken);
+
+                await WriteSseEventAsync(response, "completed", result, cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception)
+            {
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await WriteSseEventAsync(
+                            response,
+                            "error",
+                            new { message = exception.Message },
+                            CancellationToken.None);
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+        })
+            .WithName("ChatStream")
+            .WithTags("Chat")
+            .RequireAuthorization()
+            .Accepts<AgentChatRequest>("application/json")
+            .Produces(StatusCodes.Status200OK, contentType: "text/event-stream")
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
@@ -641,6 +682,35 @@ public static class ApiEndpoints
             .ProducesValidationProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity)
             .ProducesProblem(StatusCodes.Status500InternalServerError);
+    }
+
+    private static AgentAuthorizationContext CreateAuthorizationContext(ClaimsPrincipal user)
+    {
+        var userId = Guid.TryParse(user.FindFirst("sub")?.Value, out var subjectId)
+            ? subjectId
+            : throw new InvalidOperationException("Validated token subject is invalid.");
+        var username = user.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(username))
+        {
+            throw new InvalidOperationException("Validated token username is missing.");
+        }
+
+        return AgentAuthorizationContext.FromValidatedScopeClaimValues(
+            userId,
+            username,
+            user.FindAll(AgentAuthorizationContext.ScopeClaimType)
+                .Select(static claim => claim.Value));
+    }
+
+    private static async Task WriteSseEventAsync(
+        HttpResponse response,
+        string eventName,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        await response.WriteAsync($"event: {eventName}\n", cancellationToken);
+        await response.WriteAsync($"data: {JsonSerializer.Serialize(payload)}\n\n", cancellationToken);
+        await response.Body.FlushAsync(cancellationToken);
     }
 
     private static Dictionary<string, string[]> ValidateCreateIncidentRequest(CreateIncidentRequest? request)

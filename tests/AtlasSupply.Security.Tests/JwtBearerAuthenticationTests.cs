@@ -51,6 +51,37 @@ public sealed class JwtBearerAuthenticationTests
         Assert.Equal(1, factory.ToolProvider.OpenSessionCount);
     }
 
+    [Theory]
+    [InlineData("/api/chat")]
+    [InlineData("/api/chat/stream")]
+    public async Task ChatEndpoints_BindOptionalHistoryInOrder(string endpoint)
+    {
+        using var factory = new AuthenticatedApiFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", CreateToken());
+
+        var response = await client.PostAsJsonAsync(
+            endpoint,
+            new AgentChatRequest(
+                "Current message",
+                [
+                    new AgentChatHistoryItem("user", "Earlier question"),
+                    new AgentChatHistoryItem("assistant", "Earlier answer")
+                ]));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Collection(factory.LanguageModel.Requests.Single().Messages,
+            message => Assert.Equal("Earlier question", Assert.IsType<AgentUserMessage>(message).Content),
+            message => Assert.Equal("Earlier answer", Assert.IsType<AgentAssistantMessage>(message).Content),
+            message => Assert.Equal("Current message", Assert.IsType<AgentUserMessage>(message).Content));
+
+        if (endpoint.EndsWith("/stream", StringComparison.Ordinal))
+        {
+            Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+            Assert.Contains("event: completed", await response.Content.ReadAsStringAsync());
+        }
+    }
+
     [Fact]
     public async Task Chat_DerivesToolCapabilitiesFromTheValidatedJwtScopeClaimOnly()
     {

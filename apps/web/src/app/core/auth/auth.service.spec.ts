@@ -7,6 +7,7 @@ import { CHAT_API_CONFIG } from '../services/chat-api.config';
 import { authGuard } from './auth.guard';
 import { authInterceptor } from './auth.interceptor';
 import { AuthSession } from './auth.models';
+import { CHAT_HISTORY_STORAGE_KEY_PREFIX } from './auth-storage-keys';
 import { AuthService, AUTH_SESSION_STORAGE_KEY } from './auth.service';
 
 describe('AuthService and authentication HTTP integration', () => {
@@ -49,12 +50,18 @@ describe('AuthService and authentication HTTP integration', () => {
 
   it('clears the session and navigates to login on logout', () => {
     sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(activeSession));
+    sessionStorage.setItem(historyKey(activeSession.username), 'active transcript');
+    sessionStorage.setItem(historyKey('other-user'), 'other transcript');
+    sessionStorage.setItem('atlas-supply.unrelated', 'keep me');
     const { authService, router, http } = configureTestBed();
 
     authService.logout();
 
     expect(authService.accessToken).toBeNull();
     expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(historyKey(activeSession.username))).toBeNull();
+    expect(sessionStorage.getItem(historyKey('other-user'))).toBe('other transcript');
+    expect(sessionStorage.getItem('atlas-supply.unrelated')).toBe('keep me');
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
     http.verify();
   });
@@ -64,11 +71,15 @@ describe('AuthService and authentication HTTP integration', () => {
       ...activeSession,
       expiresAtUtc: '2000-01-01T00:00:00.000Z'
     }));
+    sessionStorage.setItem(historyKey(activeSession.username), 'expired transcript');
+    sessionStorage.setItem('atlas-supply.unrelated', 'keep me');
     const { authService, http } = configureTestBed();
 
     expect(authService.hasValidSession()).toBe(false);
     expect(authService.accessToken).toBeNull();
     expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(historyKey(activeSession.username))).toBeNull();
+    expect(sessionStorage.getItem('atlas-supply.unrelated')).toBe('keep me');
     http.verify();
   });
 
@@ -79,12 +90,16 @@ describe('AuthService and authentication HTTP integration', () => {
       ...activeSession,
       expiresAtUtc: '2029-01-01T00:00:01.000Z'
     }));
+    sessionStorage.setItem(historyKey(activeSession.username), 'active transcript');
+    sessionStorage.setItem('atlas-supply.unrelated', 'keep me');
     const { authService, router, http } = configureTestBed();
 
     vi.advanceTimersByTime(1_000);
 
     expect(authService.session()).toBeNull();
     expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(historyKey(activeSession.username))).toBeNull();
+    expect(sessionStorage.getItem('atlas-supply.unrelated')).toBe('keep me');
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
     http.verify();
   });
@@ -154,6 +169,9 @@ describe('AuthService and authentication HTTP integration', () => {
 
   it('clears authentication and redirects to login after an authenticated 401', () => {
     sessionStorage.setItem(AUTH_SESSION_STORAGE_KEY, JSON.stringify(activeSession));
+    sessionStorage.setItem(historyKey(activeSession.username), 'unauthorized transcript');
+    sessionStorage.setItem(historyKey('other-user'), 'other transcript');
+    sessionStorage.setItem('atlas-supply.unrelated', 'keep me');
     const { authService, client, http, router } = configureTestBed();
 
     client.get('/api/chat').subscribe({ error: () => undefined });
@@ -161,10 +179,17 @@ describe('AuthService and authentication HTTP integration', () => {
 
     expect(authService.accessToken).toBeNull();
     expect(sessionStorage.getItem(AUTH_SESSION_STORAGE_KEY)).toBeNull();
+    expect(sessionStorage.getItem(historyKey(activeSession.username))).toBeNull();
+    expect(sessionStorage.getItem(historyKey('other-user'))).toBe('other transcript');
+    expect(sessionStorage.getItem('atlas-supply.unrelated')).toBe('keep me');
     expect(router.navigateByUrl).toHaveBeenCalledWith('/login');
     http.verify();
   });
 });
+
+function historyKey(username: string): string {
+  return `${CHAT_HISTORY_STORAGE_KEY_PREFIX}${encodeURIComponent(username)}`;
+}
 
 function configureTestBed() {
   const router = {
