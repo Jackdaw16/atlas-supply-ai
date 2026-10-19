@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { DestroyRef, inject, Injectable, Injector, isDevMode } from '@angular/core';
+import { Router } from '@angular/router';
 import { firstValueFrom, fromEvent, Observable, takeUntil } from 'rxjs';
 import { Incident, IncidentStatus, IncidentType } from '../../features/incidents/models/incident.models';
 import { IncidentService } from '../../features/incidents/services/incident.service';
@@ -26,22 +27,32 @@ type ToolResult = ({ ok: true } & Record<string, unknown>) | ToolFailure;
 type InputResult<T> = { valid: true; value: T } | ToolFailure;
 
 type SelectRecord<T> = (record: T) => boolean;
+type NavigableSection = 'chat' | 'suppliers' | 'orders' | 'incidents';
 
 const PAGE_SIZE = 25;
 const ORDER_STATUSES: readonly PurchaseOrderStatus[] = ['Draft', 'Submitted', 'Approved', 'Received', 'Cancelled'];
 const INCIDENT_STATUSES: readonly IncidentStatus[] = ['Open', 'InProgress', 'Resolved', 'Closed', 'Cancelled'];
 const INCIDENT_TYPES: readonly IncidentType[] = ['Delay', 'QualityIssue', 'ShortShipment', 'DamagedGoods', 'Other'];
+const NAVIGABLE_SECTIONS: readonly NavigableSection[] = ['chat', 'suppliers', 'orders', 'incidents'];
+const SECTION_ROUTES: Record<NavigableSection, string> = {
+  chat: '/chat',
+  suppliers: '/suppliers',
+  orders: '/orders',
+  incidents: '/incidents'
+};
 
 @Injectable({ providedIn: 'root' })
 export class WebMcpToolsService {
   private readonly registry = inject(WebMcpRegistryService);
   private readonly injector = inject(Injector);
+  private readonly router = inject(Router);
 
   registerGlobalReadTools(): WebMcpRegistration {
     return this.registry.register('authenticated-global-reads', [
       ...this.supplierReadTools(),
       ...this.orderReadTools(),
-      ...this.incidentReadTools()
+      ...this.incidentReadTools(),
+      this.navigateToSectionTool()
     ]);
   }
 
@@ -158,6 +169,36 @@ export class WebMcpToolsService {
         ) : incidentId;
       }),
     ];
+  }
+
+  private navigateToSectionTool(): WebMcpTool {
+    return this.tool('navigate_to_section', 'Navigate to an authenticated Atlas Supply section.', {
+      type: 'object',
+      properties: { section: { type: 'string', enum: NAVIGABLE_SECTIONS } },
+      required: ['section'],
+      additionalProperties: false
+    }, async (input) => {
+      const section = this.requiredEnum(input, 'section', NAVIGABLE_SECTIONS);
+      if (!section.valid) {
+        return section;
+      }
+
+      const expectedRoute = SECTION_ROUTES[section.value];
+      try {
+        const navigated = await this.router.navigateByUrl(expectedRoute);
+        if (!navigated || this.router.url !== expectedRoute) {
+          return this.failure('navigation_unavailable', 'The requested section could not be reached.');
+        }
+        return {
+          ok: true,
+          requestedSection: section.value,
+          reachedSection: section.value,
+          reachedRoute: this.router.url
+        };
+      } catch {
+        return this.failure('navigation_unavailable', 'The requested section could not be reached.');
+      }
+    });
   }
 
   private openSupplierTool(selectSupplier: SelectRecord<Supplier>): WebMcpTool {
@@ -327,6 +368,17 @@ export class WebMcpToolsService {
     const value = input[key];
     return value === undefined || (typeof value === 'string' && values.includes(value as T))
       ? { valid: true, value: value as T | undefined }
+      : this.failure('invalid_input', `${key} must be one of: ${values.join(', ')}.`);
+  }
+
+  private requiredEnum<T extends string>(
+    input: Record<string, unknown>,
+    key: string,
+    values: readonly T[]
+  ): InputResult<T> {
+    const value = input[key];
+    return typeof value === 'string' && values.includes(value as T)
+      ? { valid: true, value: value as T }
       : this.failure('invalid_input', `${key} must be one of: ${values.join(', ')}.`);
   }
 
