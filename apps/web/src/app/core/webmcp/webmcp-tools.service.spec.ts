@@ -1,5 +1,6 @@
 import { DestroyRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { Router } from '@angular/router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { of } from 'rxjs';
 import { AuthService } from '../auth/auth.service';
@@ -13,7 +14,7 @@ import { WebMcpToolsService } from './webmcp-tools.service';
 describe('WebMcpToolsService', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('registers the seven global reads with their existing names and schemas', async () => {
+  it('registers the eight global tools with their existing read schemas and navigation schema', async () => {
     const page = vi.fn(() => of({ items: [order()], totalCount: 1 }));
     const registry = registrationSpy();
     configure(registry, { page, get: vi.fn(() => of(order())) });
@@ -22,10 +23,11 @@ describe('WebMcpToolsService', () => {
     service.registerGlobalReadTools();
     const tools = registeredTools(registry, 0);
     const search = findTool(tools, 'search_orders');
+    const navigate = findTool(tools, 'navigate_to_section');
     const result = await search.execute({ query: '  bolts ', status: 'Approved', delayed: true }, executionOptions());
 
     expect(tools.map((tool) => tool.name)).toEqual([
-      'search_suppliers', 'get_supplier', 'search_orders', 'get_order', 'get_delayed_orders', 'search_incidents', 'get_incident'
+      'search_suppliers', 'get_supplier', 'search_orders', 'get_order', 'get_delayed_orders', 'search_incidents', 'get_incident', 'navigate_to_section'
     ]);
     expect(search.inputSchema).toEqual({
       type: 'object',
@@ -34,10 +36,56 @@ describe('WebMcpToolsService', () => {
       },
       additionalProperties: false
     });
+    expect(navigate.inputSchema).toEqual({
+      type: 'object',
+      properties: { section: { type: 'string', enum: ['chat', 'suppliers', 'orders', 'incidents'] } },
+      required: ['section'],
+      additionalProperties: false
+    });
     expect(page).toHaveBeenCalledWith(0, 25, {
       search: 'bolts', status: 'Approved', supplierId: undefined, isDelayed: true
     });
     expect(result).toEqual(expect.objectContaining({ ok: true, totalCount: 1, items: [expect.objectContaining({ id: 'order-1', isDelayed: true })] }));
+  });
+
+  it('navigates to the requested authenticated section and reports the reached route', async () => {
+    const registry = registrationSpy();
+    const router = navigationSpy();
+    configure(registry, { page: vi.fn(), get: vi.fn(() => of(order())) }, true, vi.fn(), router);
+    const service = TestBed.inject(WebMcpToolsService);
+
+    service.registerGlobalReadTools();
+    const result = await findTool(registeredTools(registry, 0), 'navigate_to_section').execute({ section: 'orders' }, executionOptions());
+
+    expect(router.navigateByUrl).toHaveBeenCalledWith('/orders');
+    expect(result).toEqual({
+      ok: true,
+      requestedSection: 'orders',
+      reachedSection: 'orders',
+      reachedRoute: '/orders'
+    });
+  });
+
+  it('returns a navigation error when the router rejects, returns false, or reaches another route', async () => {
+    const registry = registrationSpy();
+    const router = navigationSpy();
+    router.navigateByUrl.mockResolvedValueOnce(false).mockRejectedValueOnce(new Error('Navigation failed')).mockResolvedValueOnce(true);
+    configure(registry, { page: vi.fn(), get: vi.fn(() => of(order())) }, true, vi.fn(), router);
+    const service = TestBed.inject(WebMcpToolsService);
+
+    service.registerGlobalReadTools();
+    const navigate = findTool(registeredTools(registry, 0), 'navigate_to_section');
+    const falseResult = await navigate.execute({ section: 'suppliers' }, executionOptions());
+    const rejectedResult = await navigate.execute({ section: 'incidents' }, executionOptions());
+    const wrongRouteResult = await navigate.execute({ section: 'orders' }, executionOptions());
+
+    const expectedError = {
+      ok: false,
+      error: { code: 'navigation_unavailable', message: 'The requested section could not be reached.' }
+    };
+    expect(falseResult).toEqual(expectedError);
+    expect(rejectedResult).toEqual(expectedError);
+    expect(wrongRouteResult).toEqual(expectedError);
   });
 
   it('registers only one contextual open tool for each page without overlapping the global names', () => {
@@ -98,12 +146,14 @@ function configure(
   registry: { register: ReturnType<typeof vi.fn> },
   orderService: { page: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> },
   hasValidSession = true,
-  handleUnauthorized = vi.fn()
+  handleUnauthorized = vi.fn(),
+  router = navigationSpy()
 ): void {
   TestBed.configureTestingModule({
     providers: [
       { provide: WebMcpRegistryService, useValue: registry },
       { provide: AuthService, useValue: { hasValidSession: () => hasValidSession, handleUnauthorized } },
+      { provide: Router, useValue: router },
       { provide: SupplierService, useValue: { page: vi.fn(), get: orderService.get } },
       { provide: PurchaseOrderService, useValue: orderService },
       { provide: IncidentService, useValue: { page: vi.fn(), get: orderService.get } }
@@ -113,6 +163,15 @@ function configure(
 
 function registrationSpy() {
   return { register: vi.fn(() => ({ ready: Promise.resolve(), dispose: vi.fn() })) };
+}
+
+function navigationSpy() {
+  const router = { url: '/chat', navigateByUrl: vi.fn() };
+  router.navigateByUrl.mockImplementation(async (url: string) => {
+    router.url = url;
+    return true;
+  });
+  return router;
 }
 
 function registeredTools(registry: { register: ReturnType<typeof vi.fn> }, callIndex: number): WebMcpTool[] {
